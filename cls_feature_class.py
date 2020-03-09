@@ -411,7 +411,10 @@ class FeatureClass:
 
     def get_nb_frames(self):
         return self._max_frames
-    
+
+    def get_nb_mel_bins(self):
+        return self._nb_mel_bins
+
 
 def create_folder(folder_name):
     if not os.path.exists(folder_name):

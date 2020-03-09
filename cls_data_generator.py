@@ -27,8 +27,8 @@ class DataGenerator(object):
 
         self._filenames_list = list()
         self._nb_frames_file = 0     # Using a fixed number of frames in feat files. Updated in _get_label_filenames_sizes()
-        self._feat_len = None
-        self._2_nb_ch = 2 * self._feat_cls.get_nb_channels()
+        self._nb_mel_bins = self._feat_cls.get_nb_mel_bins()
+        self._nb_ch = None
         self._label_len = None  # total length of label - DOA + SED
         self._doa_len = None    # DOA label length
         self._class_dict = self._feat_cls.get_classes()
@@ -52,7 +52,7 @@ class DataGenerator(object):
             '\tDatagen_mode: {}, nb_files: {}, nb_classes:{}\n'
             '\tnb_frames_file: {}, feat_len: {}, nb_ch: {}, label_len:{}\n'.format(
                 'eval' if self._is_eval else 'dev', len(self._filenames_list),  self._nb_classes,
-                self._nb_frames_file, self._feat_len, self._2_nb_ch, self._label_len
+                self._nb_frames_file, self._nb_mel_bins, self._nb_ch, self._label_len
                 )
         )
 
@@ -68,7 +68,7 @@ class DataGenerator(object):
         )
 
     def get_data_sizes(self):
-        feat_shape = (self._batch_size, self._2_nb_ch, self._seq_len, self._feat_len)
+        feat_shape = (self._batch_size, self._nb_ch, self._seq_len, self._nb_mel_bins)
         if self._is_eval:
             label_shape = None
         else:
@@ -88,7 +88,7 @@ class DataGenerator(object):
 
         temp_feat = np.load(os.path.join(self._feat_dir, self._filenames_list[0]))
         self._nb_frames_file = temp_feat.shape[0]
-        self._feat_len = temp_feat.shape[1] // self._2_nb_ch
+        self._nb_ch = temp_feat.shape[1] // self._nb_mel_bins
 
         if not self._is_eval:
             temp_label = np.load(os.path.join(self._label_dir, self._filenames_list[0]))
@@ -137,10 +137,10 @@ class DataGenerator(object):
                         file_cnt = file_cnt + 1
 
                     # Read one batch size from the circular buffer
-                    feat = np.zeros((self._batch_seq_len, self._feat_len * self._2_nb_ch))
+                    feat = np.zeros((self._batch_seq_len, self._nb_mel_bins * self._nb_ch))
                     for j in range(self._batch_seq_len):
                         feat[j, :] = self._circ_buf_feat.popleft()
-                    feat = np.reshape(feat, (self._batch_seq_len, self._feat_len, self._2_nb_ch))
+                    feat = np.reshape(feat, (self._batch_seq_len, self._nb_mel_bins, self._nb_ch))
 
                     # Split to sequences
                     feat = self._split_in_seqs(feat)
@@ -177,12 +177,12 @@ class DataGenerator(object):
                         file_cnt = file_cnt + 1
 
                     # Read one batch size from the circular buffer
-                    feat = np.zeros((self._batch_seq_len, self._feat_len * self._2_nb_ch))
+                    feat = np.zeros((self._batch_seq_len, self._nb_mel_bins * self._nb_ch))
                     label = np.zeros((self._batch_seq_len, self._label_len))
                     for j in range(self._batch_seq_len):
                         feat[j, :] = self._circ_buf_feat.popleft()
                         label[j, :] = self._circ_buf_label.popleft()
-                    feat = np.reshape(feat, (self._batch_seq_len, self._feat_len, self._2_nb_ch))
+                    feat = np.reshape(feat, (self._batch_seq_len, self._nb_mel_bins, self._nb_ch))
 
                     # Split to sequences
                     feat = self._split_in_seqs(feat)
@@ -270,10 +270,4 @@ class DataGenerator(object):
         return self._batch_seq_len
 
     def get_nb_frames(self):
-        return self._feat_cls._max_frames
-
-    def get_nb_frames(self):
         return self._feat_cls.get_nb_frames()
-
-
-

@@ -29,7 +29,7 @@ def get_params(argv):
         batch_size=16,              # Batch size
         dropout_rate=0,             # Dropout rate, constant for all layers
         nb_cnn2d_filt=64,           # Number of CNN nodes, constant for each layer
-        pool_size=[8, 8, 4],        # CNN pooling, length of list = number of CNN layers, list value = pooling per layer
+        pool_size=[4, 4, 4],        # CNN pooling, length of list = number of CNN layers, list value = pooling per layer
         rnn_size=[128, 128],        # RNN contents, length of list = number of layers, list value = number of nodes
         fnn_size=[128],             # FNN contents, length of list = number of layers, list value = number of nodes
         loss_weights=[1., 50.],     # [sed, doa] weight for scaling the DNN outputs
