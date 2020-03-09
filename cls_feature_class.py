@@ -11,6 +11,11 @@ from IPython import embed
 import matplotlib.pyplot as plot
 import librosa
 plot.switch_backend('agg')
+import math
+
+
+def nCr(n, r):
+    return math.factorial(n) // math.factorial(r) // math.factorial(n-r)
 
 
 class FeatureClass:
@@ -37,14 +42,16 @@ class FeatureClass:
         # Local parameters
         self._is_eval = is_eval
 
-        self._fs = 48000
-        self._hop_len_s = 0.02
+        self._fs = 24000
+        self._hop_len_s = 0.01
         self._hop_len = int(self._fs * self._hop_len_s)
         self._frame_res = self._fs / float(self._hop_len)
         self._nb_frames_1s = int(self._frame_res)
 
-        self._win_len = 2 * self._hop_len
+        self._win_len = 4 * self._hop_len
         self._nfft = self._next_greater_power_of_2(self._win_len)
+        self._nb_mel_bins = 128
+        self._mel_wts = librosa.filters.mel(sr=self._fs, n_fft=self._nfft, n_mels=self._nb_mel_bins).T
 
         self._dataset = dataset
         self._eps = np.spacing(np.float(1e-16))
@@ -109,18 +116,56 @@ class FeatureClass:
     def _spectrogram(self, audio_input):
         _nb_ch = audio_input.shape[1]
         nb_bins = self._nfft // 2
-        spectra = np.zeros((self._max_frames, nb_bins, _nb_ch), dtype=complex)
+        spectra = np.zeros((self._max_frames, nb_bins+1, _nb_ch), dtype=complex)
         for ch_cnt in range(_nb_ch):
             stft_ch = librosa.core.stft(audio_input[:, ch_cnt], n_fft=self._nfft, hop_length=self._hop_len,
                                         win_length=self._win_len, window='hann')
-            spectra[:, :, ch_cnt] = stft_ch[1:, :self._max_frames].T
+            spectra[:, :, ch_cnt] = stft_ch[:, :self._max_frames].T
         return spectra
 
-    def _extract_spectrogram_for_file(self, audio_filename):
+    def _get_mel_spectrogram(self, linear_spectra):
+        mel_feat = np.zeros((linear_spectra.shape[0], self._nb_mel_bins, linear_spectra.shape[-1]))
+        for ch_cnt in range(linear_spectra.shape[-1]):
+            mag_spectra = np.abs(linear_spectra[:, :, ch_cnt])**2
+            mel_spectra = np.dot(mag_spectra, self._mel_wts)
+            log_mel_spectra = librosa.power_to_db(mel_spectra)
+            mel_feat[:, :, ch_cnt] = log_mel_spectra
+        mel_feat = mel_feat.reshape((linear_spectra.shape[0], self._nb_mel_bins * linear_spectra.shape[-1]))
+        return mel_feat
+
+    def _get_foa_intensity_vectors(self, linear_spectra):
+        I1 = np.real(np.conj(linear_spectra[:, :, 0]) * linear_spectra[:, :, 1])
+        I2 = np.real(np.conj(linear_spectra[:, :, 0]) * linear_spectra[:, :, 2])
+        I3 = np.real(np.conj(linear_spectra[:, :, 0]) * linear_spectra[:, :, 3])
+
+        normal = np.sqrt(I1**2 + I2**2 + I3**2)
+        I1 = np.dot(I1 / normal, self._mel_wts)
+        I2 = np.dot(I2 / normal, self._mel_wts)
+        I3 = np.dot(I3 / normal, self._mel_wts)
+
+        # we are doing the following instead of simply concatenating to keep the processing similar to mel_spec and gcc
+        foa_iv = np.dstack((I1, I2, I3))
+        foa_iv = foa_iv.reshape((linear_spectra.shape[0], self._nb_mel_bins * 3))
+
+        return foa_iv
+
+    def _get_gcc(self, linear_spectra):
+        gcc_channels = nCr(linear_spectra.shape[-1], 2)
+        gcc_feat = np.zeros((linear_spectra.shape[0], self._nb_mel_bins, gcc_channels))
+        cnt = 0
+        for m in range(linear_spectra.shape[-1]):
+            for n in range(m+1, linear_spectra.shape[-1]):
+                R = np.conj(linear_spectra[:, :, m]) * linear_spectra[:, :, n]
+                cc = np.fft.irfft(np.exp(1.j*np.angle(R)))
+                cc = np.concatenate((cc[:, -self._nb_mel_bins//2:], cc[:, :self._nb_mel_bins//2]), axis=-1)
+                gcc_feat[:, :, cnt] = cc
+                cnt += 1
+        return gcc_feat.reshape((linear_spectra.shape[0], self._nb_mel_bins*gcc_channels))
+
+    def _get_spectrogram_for_file(self, audio_filename):
         audio_in, fs = self._load_audio(os.path.join(self._aud_dir, audio_filename))
         audio_spec = self._spectrogram(audio_in)
-        # print('\t{}'.format(audio_spec.shape))
-        np.save(os.path.join(self._feat_dir, '{}.npy'.format(audio_filename.split('.')[0])), audio_spec.reshape(self._max_frames, -1))
+        return audio_spec
 
     # OUTPUT LABELS
     def read_desc_file(self, desc_filename, in_sec=False):
@@ -234,7 +279,31 @@ class FeatureClass:
         for file_cnt, file_name in enumerate(os.listdir(self._aud_dir)):
             print('{}: {}'.format(file_cnt, file_name))
             wav_filename = '{}.wav'.format(file_name.split('.')[0])
-            self._extract_spectrogram_for_file(wav_filename)
+            spect = self._get_spectrogram_for_file(wav_filename)
+
+            #extract mel
+            mel_spect = self._get_mel_spectrogram(spect)
+
+            feat = None
+            if self._dataset is 'foa':
+                # extract intensity vectors
+                foa_iv = self._get_foa_intensity_vectors(spect)
+                feat = np.concatenate((mel_spect, foa_iv), axis=-1)
+            elif self._dataset is 'mic':
+                # extract gcc
+                gcc = self._get_gcc(spect)
+                feat = np.concatenate((mel_spect, gcc), axis=-1)
+            else:
+                print('ERROR: Unknown dataset format {}'.format(self._dataset))
+                exit()
+
+            # plot.figure()
+            # plot.subplot(211), plot.imshow(mel_spect.T)
+            # plot.subplot(212), plot.imshow(foa_iv.T)
+            # plot.show()
+
+            if feat is not None:
+                np.save(os.path.join(self._feat_dir, '{}.npy'.format(wav_filename.split('.')[0])), feat)
 
     def preprocess_features(self):
         # Setting up folders and filenames
@@ -257,7 +326,7 @@ class FeatureClass:
             for file_cnt, file_name in enumerate(os.listdir(self._feat_dir)):
                 print('{}: {}'.format(file_cnt, file_name))
                 feat_file = np.load(os.path.join(self._feat_dir, file_name))
-                spec_scaler.partial_fit(np.concatenate((np.abs(feat_file), np.angle(feat_file)), axis=1))
+                spec_scaler.partial_fit(feat_file)
                 del feat_file
             joblib.dump(
                 spec_scaler,
@@ -270,7 +339,7 @@ class FeatureClass:
         for file_cnt, file_name in enumerate(os.listdir(self._feat_dir)):
             print('{}: {}'.format(file_cnt, file_name))
             feat_file = np.load(os.path.join(self._feat_dir, file_name))
-            feat_file = spec_scaler.transform(np.concatenate((np.abs(feat_file), np.angle(feat_file)), axis=1))
+            feat_file = spec_scaler.transform(feat_file)
             np.save(
                 os.path.join(self._feat_dir_norm, file_name),
                 feat_file
