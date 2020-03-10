@@ -567,8 +567,7 @@ def classification_label_format_to_output_format(_feat_cls, _labels):
                 _tmp_spatial_ind = np.where(_labels[_frame_ind, _tmp_class])
                 for _tmp_spatial in _tmp_spatial_ind[0]:
                     _azi, _ele = _feat_cls.get_matrix_index(_tmp_spatial)
-                    _output_dict[_frame_ind].append(
-                        [_tmp_class, _azi, _ele])
+                    _output_dict[_frame_ind].append([_tmp_class, _azi, _ele])
 
     return _output_dict
 

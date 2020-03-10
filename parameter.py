@@ -22,7 +22,7 @@ def get_params(argv):
 
         # DATASET LOADING PARAMETERS
         mode='dev',         # 'dev' - development or 'eval' - evaluation dataset
-        dataset='foa',       # 'foa' - ambisonic or 'mic' - microphone signals
+        dataset='mic',       # 'foa' - ambisonic or 'mic' - microphone signals
 
         # DNN MODEL PARAMETERS
         sequence_length=128,        # Feature sequence length
@@ -34,7 +34,7 @@ def get_params(argv):
         fnn_size=[128],             # FNN contents, length of list = number of layers, list value = number of nodes
         loss_weights=[1., 50.],     # [sed, doa] weight for scaling the DNN outputs
         nb_epochs=50,               # Train for maximum epochs
-        epochs_per_fit=5,           # Number of epochs per fit
+        epochs_per_fit=1,           # Number of epochs per fit
 
     )
     params['patience'] = int(0.1 * params['nb_epochs'])     # Stop training if patience is reached

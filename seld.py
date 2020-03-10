@@ -8,13 +8,56 @@ import numpy as np
 import matplotlib.pyplot as plot
 import cls_feature_class
 import cls_data_generator
-from metrics import evaluation_metrics
+from metrics import evaluation_metrics, SELD_evaluation_metrics
 import keras_model
 from keras.models import load_model
 import parameter
 import time
-
 plot.switch_backend('agg')
+from IPython import embed
+
+
+def segment_labels(_pred_dict, _max_frames, _frames_seg):
+    '''
+        Collects class-wise sound event location information in segments of length _frames_seg from reference dataset
+    :param _pred_dict: Dictionary containing frame-wise sound event time and location information. Output of SELD method
+    :param _max_frames: Total number of frames in the recording
+    :param _frames_seg: Number of frames in one segment
+    :return: Dictionary containing class-wise sound event location information in each segment of audio
+            dictionary_name[segment-index][class-index] = list(frame-cnt-within-segment, azimuth, elevation)
+    '''
+    nb_blocks = int(np.ceil(_max_frames/float(_frames_seg)))
+    output_dict = {x: {} for x in range(nb_blocks)}
+    for frame_cnt in range(0, _max_frames, _frames_seg):
+
+        # Collect class-wise information for each block
+        # [class][frame] = <list of doa values>
+        # Data structure supports multi-instance occurence of same class
+        block_cnt = frame_cnt // _frames_seg
+        loc_dict = {}
+        for audio_frame in range(frame_cnt, frame_cnt+_frames_seg):
+            if audio_frame not in _pred_dict:
+                continue
+            for value in _pred_dict[audio_frame]:
+                if value[0] not in loc_dict:
+                    loc_dict[value[0]] = {}
+
+                block_frame = audio_frame - frame_cnt
+                if block_frame not in loc_dict[value[0]]:
+                    loc_dict[value[0]][block_frame] = []
+                loc_dict[value[0]][block_frame].append([value[1], value[2]])
+
+        # Update the block wise details collected above in a global structure
+        for class_cnt in loc_dict:
+            if class_cnt not in output_dict[block_cnt]:
+                output_dict[block_cnt][class_cnt] = []
+
+            keys = [k for k in loc_dict[class_cnt]]
+            values = [loc_dict[class_cnt][k] for k in loc_dict[class_cnt]]
+
+            output_dict[block_cnt][class_cnt].append([keys, values])
+
+    return output_dict
 
 
 def collect_test_labels(_data_gen_test, _data_out, quick_test):
@@ -36,16 +79,16 @@ def collect_test_labels(_data_gen_test, _data_out, quick_test):
     return gt_sed.astype(int), gt_doa
 
 
-def plot_functions(fig_name, _tr_loss, _val_loss, _sed_loss, _doa_loss, _epoch_metric_loss):
+def plot_functions(fig_name, _tr_loss, _val_loss, _sed_loss, _doa_loss, _epoch_metric_loss, _new_metric, _new_seld_metric):
     plot.figure()
     nb_epoch = len(_tr_loss)
-    plot.subplot(311)
+    plot.subplot(411)
     plot.plot(range(nb_epoch), _tr_loss, label='train loss')
     plot.plot(range(nb_epoch), _val_loss, label='val loss')
     plot.legend()
     plot.grid(True)
 
-    plot.subplot(312)
+    plot.subplot(412)
     plot.plot(range(nb_epoch), _sed_loss[:, 0], label='sed er')
     plot.plot(range(nb_epoch), _sed_loss[:, 1], label='sed f1')
     plot.plot(range(nb_epoch), _doa_loss[:, 0]/180., label='doa er / 180')
@@ -54,7 +97,17 @@ def plot_functions(fig_name, _tr_loss, _val_loss, _sed_loss, _doa_loss, _epoch_m
     plot.legend()
     plot.grid(True)
 
-    plot.subplot(313)
+    plot.subplot(413)
+    plot.plot(range(nb_epoch), _new_metric[:, 0], label='seld er')
+    plot.plot(range(nb_epoch), _new_metric[:, 1], label='seld f1')
+    plot.plot(range(nb_epoch), _new_metric[:, 2]/180., label='doa er / 180')
+    plot.plot(range(nb_epoch), _new_metric[:, 3], label='doa fr')
+    plot.plot(range(nb_epoch), _new_seld_metric, label='seld')
+
+    plot.legend()
+    plot.grid(True)
+
+    plot.subplot(414)
     plot.plot(range(nb_epoch), _doa_loss[:, 2], label='pred_pks')
     plot.plot(range(nb_epoch), _doa_loss[:, 3], label='good_pks')
     plot.legend()
@@ -95,15 +148,15 @@ def main(argv):
 
     train_splits, val_splits, test_splits = None, None, None
     if params['mode'] == 'dev':
-        test_splits = [1, 2, 3, 4]
-        val_splits = [2, 3, 4, 1]
-        train_splits = [[3, 4], [4, 1], [1, 2], [2, 3]]
+        # test_splits = [1, 2, 3, 4]
+        # val_splits = [2, 3, 4, 1]
+        # train_splits = [[3, 4], [4, 1], [1, 2], [2, 3]]
 
         # SUGGESTION: Considering the long training time, major tuning of the method can be done on the first split.
         # Once you finlaize the method you can evaluate its performance on the complete cross-validation splits
-        # test_splits = [1]
-        # val_splits = [2]
-        # train_splits = [[3, 4]]
+        test_splits = [1]
+        val_splits = [2]
+        train_splits = [[3, 4]]
 
     elif params['mode'] == 'eval':
         test_splits = [0]
@@ -164,10 +217,12 @@ def main(argv):
         best_epoch = -1
         patience_cnt = 0
         seld_metric = np.zeros(params['nb_epochs'])
+        new_seld_metric = np.zeros(params['nb_epochs'])
         tr_loss = np.zeros(params['nb_epochs'])
         val_loss = np.zeros(params['nb_epochs'])
         doa_metric = np.zeros((params['nb_epochs'], 6))
         sed_metric = np.zeros((params['nb_epochs'], 2))
+        new_metric = np.zeros((params['nb_epochs'], 4))
         nb_epoch = 2 if params['quick_test'] else params['nb_epochs']
 
         # start training
@@ -204,33 +259,50 @@ def main(argv):
             doa_metric[epoch_cnt, :] = evaluation_metrics.compute_doa_scores_regr(doa_pred, doa_gt, sed_pred, sed_gt)
             seld_metric[epoch_cnt] = evaluation_metrics.compute_seld_metric(sed_metric[epoch_cnt, :], doa_metric[epoch_cnt, :])
 
+            # new SELD scores
+            cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_val.get_nb_classes())
+            pred_dict = evaluation_metrics.regression_label_format_to_output_format(
+                data_gen_val, sed_pred, doa_pred * 180 / np.pi
+            )
+            gt_dict = evaluation_metrics.regression_label_format_to_output_format(
+                data_gen_val, sed_gt, doa_gt * 180 / np.pi
+            )
+
+            pred_blocks_dict = segment_labels(pred_dict, sed_pred.shape[0], data_gen_val.nb_frames_1s())
+            gt_blocks_dict = segment_labels(gt_dict, sed_gt.shape[0], data_gen_val.nb_frames_1s())
+
+            cls_new_metric.update_seld_scores(pred_blocks_dict, gt_blocks_dict)
+            new_metric[epoch_cnt, :] = cls_new_metric.compute_seld_scores()
+            new_seld_metric[epoch_cnt] = evaluation_metrics.compute_seld_metric(new_metric[epoch_cnt, :2], new_metric[epoch_cnt, 2:])
+
             # Visualize the metrics with respect to epochs
-            plot_functions(unique_name, tr_loss, val_loss, sed_metric, doa_metric, seld_metric)
+            plot_functions(unique_name, tr_loss, val_loss, sed_metric, doa_metric, seld_metric, new_metric, new_seld_metric)
 
             patience_cnt += 1
-            if seld_metric[epoch_cnt] < best_seld_metric:
-                best_seld_metric = seld_metric[epoch_cnt]
+            if new_seld_metric[epoch_cnt] < best_seld_metric:
+                best_seld_metric = new_seld_metric[epoch_cnt]
                 best_epoch = epoch_cnt
                 model.save(model_name)
                 patience_cnt = 0
 
             print(
-                'epoch_cnt: %d, time: %.2fs, tr_loss: %.2f, val_loss: %.2f, '
-                'ER_overall: %.2f, F1_overall: %.2f, '
-                'doa_error_pred: %.2f, good_pks_ratio:%.2f, '
-                'seld_score: %.2f, best_seld_score: %.2f, best_epoch : %d\n' %
-                (
+                'epoch_cnt: {}, time: {:0.2f}s, tr_loss: {:0.2f}, val_loss: {:0.2f}, '
+                '\n\t\t OLD SCORES: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_F:{:0.2f}, seld_score: {:0.2f}, ' 
+                '\n\t\t NEW SCORES: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_F:{:0.2f}, seld_score: {:0.2f}, '
+                'best_seld_score: {:0.2f}, best_epoch : {}\n'.format(
                     epoch_cnt, time.time() - start, tr_loss[epoch_cnt], val_loss[epoch_cnt],
                     sed_metric[epoch_cnt, 0], sed_metric[epoch_cnt, 1],
-                    doa_metric[epoch_cnt, 0], doa_metric[epoch_cnt, 1],
-                    seld_metric[epoch_cnt], best_seld_metric, best_epoch
+                    doa_metric[epoch_cnt, 0], doa_metric[epoch_cnt, 1], seld_metric[epoch_cnt],
+                    new_metric[epoch_cnt, 0], new_metric[epoch_cnt, 1],
+                    new_metric[epoch_cnt, 2], new_metric[epoch_cnt, 3],
+                    new_seld_metric[epoch_cnt], best_seld_metric, best_epoch
                 )
             )
             if patience_cnt > params['patience']:
                 break
 
-        avg_scores_val.append([sed_metric[best_epoch, 0], sed_metric[best_epoch, 1], doa_metric[best_epoch, 0],
-                               doa_metric[best_epoch, 1], best_seld_metric])
+        avg_scores_val.append([new_metric[best_epoch, 0], new_metric[best_epoch, 1], new_metric[best_epoch, 2],
+                               new_metric[best_epoch, 3], best_seld_metric])
         print('\nResults on validation split:')
         print('\tUnique_name: {} '.format(unique_name))
         print('\tSaved model for the best_epoch: {}'.format(best_epoch))
@@ -298,20 +370,35 @@ def main(argv):
             test_doa_loss = evaluation_metrics.compute_doa_scores_regr(test_doa_pred, test_doa_gt, test_sed_pred, test_sed_gt)
             test_metric_loss = evaluation_metrics.compute_seld_metric(test_sed_loss, test_doa_loss)
 
-            avg_scores_test.append([test_sed_loss[0], test_sed_loss[1], test_doa_loss[0], test_doa_loss[1], test_metric_loss])
-            print('Results on test split:')
-            print('\tSELD_score: {},  '.format(test_metric_loss))
-            print('\tDOA Metrics: DOA_error: {}, frame_recall: {}'.format(test_doa_loss[0], test_doa_loss[1]))
-            print('\tSED Metrics: ER_overall: {}, F1_overall: {}\n'.format(test_sed_loss[0], test_sed_loss[1]))
+            # new SELD scores
+            cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_test.get_nb_classes())
+            test_pred_dict = evaluation_metrics.regression_label_format_to_output_format(
+                data_gen_test, test_sed_pred, test_doa_pred * 180 / np.pi
+            )
+            test_gt_dict = evaluation_metrics.regression_label_format_to_output_format(
+                data_gen_test, test_sed_gt, test_doa_gt * 180 / np.pi
+            )
 
-    print('\n\nValidation split scores per fold:\n')
+            test_pred_blocks_dict = segment_labels(test_pred_dict, test_sed_pred.shape[0], data_gen_test.nb_frames_1s())
+            test_gt_blocks_dict = segment_labels(test_gt_dict, test_sed_gt.shape[0], data_gen_test.nb_frames_1s())
+
+            cls_new_metric.update_seld_scores(test_pred_blocks_dict, test_gt_blocks_dict)
+            test_new_metric = cls_new_metric.compute_seld_scores()
+            test_new_seld_metric = evaluation_metrics.compute_seld_metric(test_new_metric[:2], test_new_metric[2:])
+
+            avg_scores_test.append([test_new_metric[0], test_new_metric[1], test_new_metric[2], test_new_metric[3], test_new_seld_metric])
+            print('Results on test split:')
+            print('\tOld Metrics: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_FR: {:0.2f}, SELD: {:0.2f}'.format(test_doa_loss[0], test_doa_loss[1], test_sed_loss[0], test_sed_loss[1], test_metric_loss))
+            print('\tNew Metrics: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_FR: {:0.2f}, SELD: {:0.2f}'.format(test_new_metric[0], test_new_metric[1], test_new_metric[2], test_new_metric[3], test_new_seld_metric))
+
+    print('\n\nValidation split scores per fold:')
     for cnt in range(len(val_splits)):
-        print('\tSplit {} - SED ER: {} F1: {}; DOA error: {} frame recall: {}; SELD score: {}'.format(cnt, avg_scores_val[cnt][0], avg_scores_val[cnt][1], avg_scores_val[cnt][2], avg_scores_val[cnt][3], avg_scores_val[cnt][4]))
+        print('\tSplit {} - SED ER: {:0.2f} F1: {}; DOA error: {:0.2f} frame recall: {:0.2f}; SELD score: {:0.2f}'.format(cnt, avg_scores_val[cnt][0], avg_scores_val[cnt][1], avg_scores_val[cnt][2], avg_scores_val[cnt][3], avg_scores_val[cnt][4]))
 
     if params['mode'] is 'dev':
-        print('\n\nTesting split scores per fold:\n')
+        print('\n\nTesting split scores per fold:')
         for cnt in range(len(val_splits)):
-            print('\tSplit {} - SED ER: {} F1: {}; DOA error: {} frame recall: {}; SELD score: {}'.format(cnt, avg_scores_test[cnt][0], avg_scores_test[cnt][1], avg_scores_test[cnt][2], avg_scores_test[cnt][3], avg_scores_test[cnt][4]))
+            print('\tSplit {} - SED ER: {:0.2f} F1: {:0.2f}; DOA error: {:0.2f} frame recall: {:0.2f}; SELD score: {:0.2f}'.format(cnt, avg_scores_test[cnt][0], avg_scores_test[cnt][1], avg_scores_test[cnt][2], avg_scores_test[cnt][3], avg_scores_test[cnt][4]))
 
 
 if __name__ == "__main__":
