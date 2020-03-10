@@ -35,7 +35,8 @@ def get_params(argv):
         loss_weights=[1., 50.],     # [sed, doa] weight for scaling the DNN outputs
         nb_epochs=50,               # Train for maximum epochs
         epochs_per_fit=1,           # Number of epochs per fit
-
+        doa_objective='masked_mse',     # supports: mse, masked_mse. mse- original seld approach; masked_mse - dcase 2020 approach
+        start_masked_epoch=5        # if doa_objective==masked, the masking is applied only after 'start_masked_epoch' epochs
     )
     params['patience'] = int(0.1 * params['nb_epochs'])     # Stop training if patience is reached
 

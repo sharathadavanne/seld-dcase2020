@@ -10,7 +10,6 @@ import cls_feature_class
 import cls_data_generator
 from metrics import evaluation_metrics, SELD_evaluation_metrics
 import keras_model
-from keras.models import load_model
 import parameter
 import time
 plot.switch_backend('agg')
@@ -205,14 +204,16 @@ def main(argv):
         def_elevation = data_gen_train.get_default_elevation()
         doa_gt[:, nb_classes:] = doa_gt[:, nb_classes:] / (180. / def_elevation)
 
-        print('MODEL:\n\tdropout_rate: {}\n\tCNN: nb_cnn_filt: {}, pool_size{}\n\trnn_size: {}, fnn_size: {}\n'.format(
+        print('MODEL:\n\tdropout_rate: {}\n\tCNN: nb_cnn_filt: {}, pool_size{}\n\trnn_size: {}, fnn_size: {}\n\tdoa_objective: {}\n'.format(
             params['dropout_rate'], params['nb_cnn2d_filt'], params['pool_size'], params['rnn_size'],
-            params['fnn_size']))
+            params['fnn_size'], params['doa_objective']))
 
+        output_weights = [1, 0] if params['doa_objective'] is 'masked_mse' else params['loss_weights']
+        print('Using loss weights : {}'.format(output_weights))
         model = keras_model.get_model(data_in=data_in, data_out=data_out, dropout_rate=params['dropout_rate'],
                                       nb_cnn2d_filt=params['nb_cnn2d_filt'], pool_size=params['pool_size'],
                                       rnn_size=params['rnn_size'], fnn_size=params['fnn_size'],
-                                      weights=params['loss_weights'])
+                                      weights=output_weights, doa_objective=params['doa_objective'])
         best_seld_metric = 99999
         best_epoch = -1
         patience_cnt = 0
@@ -227,6 +228,9 @@ def main(argv):
 
         # start training
         for epoch_cnt in range(nb_epoch):
+            if params['doa_objective'] is 'masked_mse' and epoch_cnt == params['start_masked_epoch']:
+                print('Updating loss weights to {}'.format(params['loss_weights']))
+                model = keras_model.compile_model(model, params['loss_weights'])
             start = time.time()
 
             # train once per epoch
@@ -250,7 +254,7 @@ def main(argv):
 
             # Calculate the metrics
             sed_pred = evaluation_metrics.reshape_3Dto2D(pred[0]) > 0.5
-            doa_pred = evaluation_metrics.reshape_3Dto2D(pred[1])
+            doa_pred = evaluation_metrics.reshape_3Dto2D(pred[1] if params['doa_objective'] is 'mse' else pred[1][:, :, nb_classes:])
 
             # rescaling the elevation data from [-180 180] to [-def_elevation def_elevation] for scoring purpose
             doa_pred[:, nb_classes:] = doa_pred[:, nb_classes:] / (180. / def_elevation)
@@ -321,7 +325,7 @@ def main(argv):
         )
 
         print('\nLoading the best model and predicting results on the testing split')
-        model = load_model('{}_model.h5'.format(unique_name))
+        model = keras_model.load_seld_model('{}_model.h5'.format(unique_name), params['doa_objective'])
         pred_test = model.predict_generator(
             generator=data_gen_test.generate(),
             steps=2 if params['quick_test'] else data_gen_test.get_total_batches_in_data(),
@@ -329,7 +333,7 @@ def main(argv):
         )
 
         test_sed_pred = evaluation_metrics.reshape_3Dto2D(pred_test[0]) > 0.5
-        test_doa_pred = evaluation_metrics.reshape_3Dto2D(pred_test[1])
+        test_doa_pred = evaluation_metrics.reshape_3Dto2D(pred_test[1] if params['doa_objective'] is 'mse' else pred_test[1][:, :, nb_classes:])
 
         # rescaling the elevation data from [-180 180] to [-def_elevation def_elevation] for scoring purpose
         test_doa_pred[:, nb_classes:] = test_doa_pred[:, nb_classes:] / (180. / def_elevation)
