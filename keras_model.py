@@ -13,7 +13,7 @@ from keras.models import load_model
 import keras
 keras.backend.set_image_data_format('channels_first')
 from IPython import embed
-
+import numpy as np
 
 def get_model(data_in, data_out, dropout_rate, nb_cnn2d_filt, pool_size,
                                 rnn_size, fnn_size, weights, doa_objective):
@@ -63,7 +63,7 @@ def get_model(data_in, data_out, dropout_rate, nb_cnn2d_filt, pool_size,
     elif doa_objective is 'masked_mse':
         doa_concat = Concatenate(axis=-1, name='doa_concat')([sed, doa])
         model = Model(inputs=spec_start, outputs=[sed, doa_concat])
-        model = compile_model(model, weights)
+        model.compile(optimizer=Adam(), loss=['binary_crossentropy', masked_mse], loss_weights=weights)
     else:
         print('ERROR: Unknown doa_objective: {}'.format(doa_objective))
         exit()
@@ -71,16 +71,14 @@ def get_model(data_in, data_out, dropout_rate, nb_cnn2d_filt, pool_size,
     return model
 
 
-def compile_model(model, weights):
-    model.compile(optimizer=Adam(), loss=['binary_crossentropy', masked_mse], loss_weights=weights)
-    return model
-
-
 def masked_mse(y_gt, model_out):
-    sed_out = model_out[:, :, :11]
+    # SED mask: Use only the predicted DOAs when gt SED > 0.5
+    sed_out = y_gt[:, :, :11] >= 0.5
     sed_out = keras.backend.repeat_elements(sed_out, 2, -1)
-    doa_out = model_out[:, :, 11:]
-    return keras.losses.mse(y_gt, doa_out*sed_out)
+    sed_out = keras.backend.cast(sed_out, 'float32')
+
+    # Use the mask to computed mse now. Normalize with the mask weights
+    return keras.backend.sqrt(keras.backend.sum(keras.backend.square(y_gt[:, :, 11:] - model_out[:, :, 11:]) * sed_out))/keras.backend.sum(sed_out)
 
 
 def load_seld_model(model_file, doa_objective):

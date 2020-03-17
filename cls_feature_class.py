@@ -102,7 +102,7 @@ class FeatureClass:
         fs, audio = wav.read(audio_path)
         audio = audio[:, :self._nb_channels] / 32768.0 + self._eps
         if audio.shape[0] < self._audio_max_len_samples:
-            zero_pad = np.zeros((self._audio_max_len_samples - audio.shape[0], audio.shape[1]))
+            zero_pad = np.random.rand(self._audio_max_len_samples - audio.shape[0], audio.shape[1])*self._eps
             audio = np.vstack((audio, zero_pad))
         elif audio.shape[0] > self._audio_max_len_samples:
             audio = audio[:self._audio_max_len_samples, :]
@@ -146,7 +146,9 @@ class FeatureClass:
         # we are doing the following instead of simply concatenating to keep the processing similar to mel_spec and gcc
         foa_iv = np.dstack((I1, I2, I3))
         foa_iv = foa_iv.reshape((linear_spectra.shape[0], self._nb_mel_bins * 3))
-
+        if np.isnan(foa_iv).any():
+            print('Feature extraction is generating nan outputs')
+            exit()
         return foa_iv
 
     def _get_gcc(self, linear_spectra):

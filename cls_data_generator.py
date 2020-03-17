@@ -74,7 +74,7 @@ class DataGenerator(object):
         else:
             label_shape = [
                 (self._batch_size, self._seq_len, self._nb_classes),
-                (self._batch_size, self._seq_len, self._nb_classes*2)
+                (self._batch_size, self._seq_len, self._nb_classes*3)
             ]
         return feat_shape, label_shape
 
@@ -191,15 +191,23 @@ class DataGenerator(object):
 
                     # Get azi/ele in radians
                     azi_rad = label[:, :, self._nb_classes:2 * self._nb_classes] * np.pi / 180
-                    # ele_rad = label[:, :, 2 * self._nb_classes:] * np.pi / 180
+                    ele_rad = label[:, :, 2 * self._nb_classes:] * np.pi / 180
+                    tmp_label = np.cos(ele_rad)
 
-                    # rescaling the elevation data from [-def_elevation def_elevation] to [-180 180] to keep them in the
-                    # range of azimuth angle
-                    ele_rad = label[:, :, 2 * self._nb_classes:] * np.pi / self._default_ele
+                    x = np.cos(azi_rad) * tmp_label
+                    y = np.sin(azi_rad) * tmp_label
+                    z = np.sin(ele_rad)
+
+                    # Set default Cartesian x,y,z coordinates to 0,0,0
+                    no_ele_ind = np.where(label[:, :, 2 * self._nb_classes:] == self._default_ele)
+                    x[no_ele_ind] = 0
+                    z[no_ele_ind] = 0
+                    y[no_ele_ind] = 0
+
 
                     label = [
                         label[:, :, :self._nb_classes],  # SED labels
-                        np.concatenate((azi_rad, ele_rad), -1)  # DOA labels in radians
+                        np.concatenate((label[:, :, :self._nb_classes], x, y, z), -1)  # DOA labels
                          ]
 
                     yield feat, label
@@ -271,3 +279,6 @@ class DataGenerator(object):
 
     def get_nb_frames(self):
         return self._feat_cls.get_nb_frames()
+    
+    def get_data_gen_mode(self):
+        return self._is_eval

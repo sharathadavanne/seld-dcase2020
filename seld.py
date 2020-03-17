@@ -71,19 +71,22 @@ def collect_test_labels(_data_gen_test, _data_out, quick_test):
     cnt = 0
     for tmp_feat, tmp_label in _data_gen_test.generate():
         gt_sed[cnt * batch_size:(cnt + 1) * batch_size, :, :] = tmp_label[0]
-        gt_doa[cnt * batch_size:(cnt + 1) * batch_size, :, :] = tmp_label[1]
+        if _data_gen_test.get_data_gen_mode():
+            doa_label = tmp_label[1]
+        else:
+            doa_label = tmp_label[1][:, :, 11:]
+        gt_doa[cnt * batch_size:(cnt + 1) * batch_size, :, :] = doa_label
         cnt = cnt + 1
         if cnt == nb_batch:
             break
     return gt_sed.astype(int), gt_doa
 
 
-def plot_functions(fig_name, _tr_loss, _val_loss, _sed_loss, _doa_loss, _epoch_metric_loss, _new_metric, _new_seld_metric):
+def plot_functions(fig_name, _tr_loss, _sed_loss, _doa_loss, _epoch_metric_loss, _new_metric, _new_seld_metric):
     plot.figure()
     nb_epoch = len(_tr_loss)
     plot.subplot(411)
     plot.plot(range(nb_epoch), _tr_loss, label='train loss')
-    plot.plot(range(nb_epoch), _val_loss, label='val loss')
     plot.legend()
     plot.grid(True)
 
@@ -127,6 +130,7 @@ def main(argv):
                               (default) 1
 
     """
+    print(argv)
     if len(argv) != 3:
         print('\n\n')
         print('-------------------------------------------------------------------------------------------------------')
@@ -208,42 +212,34 @@ def main(argv):
             params['dropout_rate'], params['nb_cnn2d_filt'], params['pool_size'], params['rnn_size'],
             params['fnn_size'], params['doa_objective']))
 
-        output_weights = [1, 0] if params['doa_objective'] is 'masked_mse' else params['loss_weights']
-        print('Using loss weights : {}'.format(output_weights))
+        print('Using loss weights : {}'.format(params['loss_weights']))
         model = keras_model.get_model(data_in=data_in, data_out=data_out, dropout_rate=params['dropout_rate'],
                                       nb_cnn2d_filt=params['nb_cnn2d_filt'], pool_size=params['pool_size'],
                                       rnn_size=params['rnn_size'], fnn_size=params['fnn_size'],
-                                      weights=output_weights, doa_objective=params['doa_objective'])
+                                      weights=params['loss_weights'], doa_objective=params['doa_objective'])
         best_seld_metric = 99999
         best_epoch = -1
         patience_cnt = 0
-        seld_metric = np.zeros(params['nb_epochs'])
-        new_seld_metric = np.zeros(params['nb_epochs'])
-        tr_loss = np.zeros(params['nb_epochs'])
-        val_loss = np.zeros(params['nb_epochs'])
-        doa_metric = np.zeros((params['nb_epochs'], 6))
-        sed_metric = np.zeros((params['nb_epochs'], 2))
-        new_metric = np.zeros((params['nb_epochs'], 4))
         nb_epoch = 2 if params['quick_test'] else params['nb_epochs']
+        seld_metric = np.zeros(nb_epoch)
+        new_seld_metric = np.zeros(nb_epoch)
+        tr_loss = np.zeros(nb_epoch)
+        doa_metric = np.zeros((nb_epoch, 6))
+        sed_metric = np.zeros((nb_epoch, 2))
+        new_metric = np.zeros((nb_epoch, 4))
 
         # start training
         for epoch_cnt in range(nb_epoch):
-            if params['doa_objective'] is 'masked_mse' and epoch_cnt == params['start_masked_epoch']:
-                print('Updating loss weights to {}'.format(params['loss_weights']))
-                model = keras_model.compile_model(model, params['loss_weights'])
             start = time.time()
 
             # train once per epoch
             hist = model.fit_generator(
                 generator=data_gen_train.generate(),
                 steps_per_epoch=2 if params['quick_test'] else data_gen_train.get_total_batches_in_data(),
-                validation_data=data_gen_val.generate(),
-                validation_steps=2 if params['quick_test'] else data_gen_val.get_total_batches_in_data(),
                 epochs=params['epochs_per_fit'],
-                verbose=2
+                verbose=2,
             )
             tr_loss[epoch_cnt] = hist.history.get('loss')[-1]
-            val_loss[epoch_cnt] = hist.history.get('val_loss')[-1]
 
             # predict once per peoch
             pred = model.predict_generator(
@@ -256,15 +252,13 @@ def main(argv):
             sed_pred = evaluation_metrics.reshape_3Dto2D(pred[0]) > 0.5
             doa_pred = evaluation_metrics.reshape_3Dto2D(pred[1] if params['doa_objective'] is 'mse' else pred[1][:, :, nb_classes:])
 
-            # rescaling the elevation data from [-180 180] to [-def_elevation def_elevation] for scoring purpose
-            doa_pred[:, nb_classes:] = doa_pred[:, nb_classes:] / (180. / def_elevation)
 
             sed_metric[epoch_cnt, :] = evaluation_metrics.compute_sed_scores(sed_pred, sed_gt, data_gen_val.nb_frames_1s())
-            doa_metric[epoch_cnt, :] = evaluation_metrics.compute_doa_scores_regr(doa_pred, doa_gt, sed_pred, sed_gt)
+            doa_metric[epoch_cnt, :] = evaluation_metrics.compute_doa_scores_regr_xyz(doa_pred, doa_gt, sed_pred, sed_gt)
             seld_metric[epoch_cnt] = evaluation_metrics.compute_seld_metric(sed_metric[epoch_cnt, :], doa_metric[epoch_cnt, :])
 
             # new SELD scores
-            cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_val.get_nb_classes())
+            cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_val.get_nb_classes(), doa_threshold=20)
             pred_dict = evaluation_metrics.regression_label_format_to_output_format(
                 data_gen_val, sed_pred, doa_pred * 180 / np.pi
             )
@@ -280,7 +274,7 @@ def main(argv):
             new_seld_metric[epoch_cnt] = evaluation_metrics.compute_seld_metric(new_metric[epoch_cnt, :2], new_metric[epoch_cnt, 2:])
 
             # Visualize the metrics with respect to epochs
-            plot_functions(unique_name, tr_loss, val_loss, sed_metric, doa_metric, seld_metric, new_metric, new_seld_metric)
+            plot_functions(unique_name, tr_loss, sed_metric, doa_metric, seld_metric, new_metric, new_seld_metric)
 
             patience_cnt += 1
             if new_seld_metric[epoch_cnt] < best_seld_metric:
@@ -290,11 +284,11 @@ def main(argv):
                 patience_cnt = 0
 
             print(
-                'epoch_cnt: {}, time: {:0.2f}s, tr_loss: {:0.2f}, val_loss: {:0.2f}, '
+                'epoch_cnt: {}, time: {:0.2f}s, tr_loss: {:0.2f}, '
                 '\n\t\t OLD SCORES: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_F:{:0.2f}, seld_score: {:0.2f}, ' 
                 '\n\t\t NEW SCORES: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_F:{:0.2f}, seld_score: {:0.2f}, '
                 'best_seld_score: {:0.2f}, best_epoch : {}\n'.format(
-                    epoch_cnt, time.time() - start, tr_loss[epoch_cnt], val_loss[epoch_cnt],
+                    epoch_cnt, time.time() - start, tr_loss[epoch_cnt],
                     sed_metric[epoch_cnt, 0], sed_metric[epoch_cnt, 1],
                     doa_metric[epoch_cnt, 0], doa_metric[epoch_cnt, 1], seld_metric[epoch_cnt],
                     new_metric[epoch_cnt, 0], new_metric[epoch_cnt, 1],
@@ -397,7 +391,7 @@ def main(argv):
 
     print('\n\nValidation split scores per fold:')
     for cnt in range(len(val_splits)):
-        print('\tSplit {} - SED ER: {:0.2f} F1: {}; DOA error: {:0.2f} frame recall: {:0.2f}; SELD score: {:0.2f}'.format(cnt, avg_scores_val[cnt][0], avg_scores_val[cnt][1], avg_scores_val[cnt][2], avg_scores_val[cnt][3], avg_scores_val[cnt][4]))
+        print('\tSplit {} - SED ER: {:0.2f} F1: {:0.2f}; DOA error: {:0.2f} frame recall: {:0.2f}; SELD score: {:0.2f}'.format(cnt, avg_scores_val[cnt][0], avg_scores_val[cnt][1], avg_scores_val[cnt][2], avg_scores_val[cnt][3], avg_scores_val[cnt][4]))
 
     if params['mode'] is 'dev':
         print('\n\nTesting split scores per fold:')

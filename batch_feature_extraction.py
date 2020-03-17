@@ -7,8 +7,8 @@ process_str = 'dev, eval'  # 'dev' or 'eval' will extract features for the respe
 #  'dev, eval' will extract features of both sets together
 
 dataset_name = 'foa'  # 'foa' -ambisonic or 'mic' - microphone signals
-dataset_dir = '/home/sharath/Downloads/SELD_2019_dataset'   # Base folder containing the foa/mic and metadata folders
-feat_label_dir = '/home/sharath/Downloads/SELD_2019_dataset/feat_label/'  # Directory to dump extracted features and labels
+dataset_dir = '/scratch/asignal/sharath/DCASE2019_SELD_dataset'   # Base folder containing the foa/mic and metadata folders
+feat_label_dir = '/scratch/asignal/sharath/DCASE2019_SELD_dataset/feat_label/'  # Directory to dump extracted features and labels
 
 
 if 'dev' in process_str:
