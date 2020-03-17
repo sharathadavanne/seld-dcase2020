@@ -247,6 +247,68 @@ def compute_sed_scores(pred, gt, nb_frames_1s):
 ###############################################################
 
 
+def compute_doa_scores_regr_xyz(pred_doa, gt_doa, pred_sed, gt_sed):
+    """
+        Compute DOA metrics when DOA is estimated using regression approach
+
+    :param pred_doa: predicted doa_labels is of dimension [nb_frames, 3*nb_classes],
+                        nb_classes each for x, y, and z axes,
+                        if active, the DOA values will be in real numbers [-1 1] range, else, it will contain default doa values of (0, 0, 0)
+    :param gt_doa: reference doa_labels is of dimension [nb_frames, 3*nb_classes],
+    :param pred_sed: predicted sed label of dimension [nb_frames, nb_classes] which is 1 for active sound event else zero
+    :param gt_sed: reference sed label of dimension [nb_frames, nb_classes] which is 1 for active sound event else zero
+    :return:
+    """
+
+    nb_src_gt_list = np.zeros(gt_doa.shape[0]).astype(int)
+    nb_src_pred_list = np.zeros(gt_doa.shape[0]).astype(int)
+    good_frame_cnt = 0
+    doa_loss_pred = 0.0
+    nb_sed = gt_sed.shape[-1]
+
+    less_est_cnt, less_est_frame_cnt = 0, 0
+    more_est_cnt, more_est_frame_cnt = 0, 0
+
+    for frame_cnt, sed_frame in enumerate(gt_sed):
+        nb_src_gt_list[frame_cnt] = int(np.sum(sed_frame))
+        nb_src_pred_list[frame_cnt] = int(np.sum(pred_sed[frame_cnt]))
+
+        # good_frame_cnt includes frames where the nb active sources were zero in both groundtruth and prediction
+        if nb_src_gt_list[frame_cnt] == nb_src_pred_list[frame_cnt]:
+            good_frame_cnt = good_frame_cnt + 1
+        elif nb_src_gt_list[frame_cnt] > nb_src_pred_list[frame_cnt]:
+            less_est_cnt = less_est_cnt + nb_src_gt_list[frame_cnt] - nb_src_pred_list[frame_cnt]
+            less_est_frame_cnt = less_est_frame_cnt + 1
+        elif nb_src_gt_list[frame_cnt] < nb_src_pred_list[frame_cnt]:
+            more_est_cnt = more_est_cnt + nb_src_pred_list[frame_cnt] - nb_src_gt_list[frame_cnt]
+            more_est_frame_cnt = more_est_frame_cnt + 1
+
+        # when nb_ref_doa > nb_estimated_doa, ignores the extra ref doas and scores only the nearest matching doas
+        # similarly, when nb_estimated_doa > nb_ref_doa, ignores the extra estimated doa and scores the remaining matching doas
+        if nb_src_gt_list[frame_cnt] and nb_src_pred_list[frame_cnt]:
+            # DOA Loss with respect to predicted confidence
+            sed_frame_gt = gt_sed[frame_cnt]
+            doa_frame_gt_x = gt_doa[frame_cnt][:nb_sed][sed_frame_gt == 1]
+            doa_frame_gt_y = gt_doa[frame_cnt][nb_sed:2*nb_sed][sed_frame_gt == 1]
+            doa_frame_gt_z = gt_doa[frame_cnt][2*nb_sed:][sed_frame_gt == 1]
+
+            sed_frame_pred = pred_sed[frame_cnt]
+            doa_frame_pred_x = pred_doa[frame_cnt][:nb_sed][sed_frame_pred == 1]
+            doa_frame_pred_y = pred_doa[frame_cnt][nb_sed:2*nb_sed][sed_frame_pred == 1]
+            doa_frame_pred_z = pred_doa[frame_cnt][2*nb_sed:][sed_frame_pred == 1]
+
+            doa_loss_pred += distance_between_gt_pred_xyz(np.vstack((doa_frame_gt_x, doa_frame_gt_y, doa_frame_gt_z)).T,
+                                                      np.vstack((doa_frame_pred_x, doa_frame_pred_y, doa_frame_pred_z)).T)
+
+    doa_loss_pred_cnt = np.sum(nb_src_pred_list)
+    if doa_loss_pred_cnt:
+        doa_loss_pred /= doa_loss_pred_cnt
+
+    frame_recall = good_frame_cnt / float(gt_sed.shape[0])
+    er_metric = [doa_loss_pred, frame_recall, doa_loss_pred_cnt, good_frame_cnt, more_est_cnt, less_est_cnt]
+    return er_metric
+
+
 def compute_doa_scores_regr(pred_doa_rad, gt_doa_rad, pred_sed, gt_sed):
     """
         Compute DOA metrics when DOA is estimated using regression approach
@@ -401,6 +463,43 @@ def distance_between_gt_pred(gt_list_rad, pred_list_rad):
     return cost
 
 
+def distance_between_gt_pred_xyz(gt_list, pred_list):
+    """
+    Shortest distance between two sets of Cartesian coordinates. Given a set of groundtruth coordinates,
+     and its respective predicted coordinates, we calculate the spherical distance between each of the spherical
+     coordinate pairs resulting in a matrix of distances, where one axis represents the number of groundtruth
+     coordinates and the other the predicted coordinates. The number of estimated peaks need not be the same as in
+     groundtruth, thus the distance matrix is not always a square matrix. We use the hungarian algorithm to find the
+     least cost in this distance matrix.
+
+    :param gt_list: list of ground-truth Cartesian coordinates
+    :param pred_list: list of predicted Cartesian coordinates
+    :return: cost -  distance
+    :return: less - number of DOA's missed
+    :return: extra - number of DOA's over-estimated
+    """
+
+    gt_len, pred_len = gt_list.shape[0], pred_list.shape[0]
+    ind_pairs = np.array([[x, y] for y in range(pred_len) for x in range(gt_len)])
+    cost_mat = np.zeros((gt_len, pred_len))
+
+    # Slow implementation
+    # cost_mat = np.zeros((gt_len, pred_len))
+    # for gt_cnt, gt in enumerate(gt_list_rad):
+    #     for pred_cnt, pred in enumerate(pred_list_rad):
+    #         cost_mat[gt_cnt, pred_cnt] = distance_between_spherical_coordinates_rad(gt, pred)
+
+    # Fast implementation
+    if gt_len and pred_len:
+        x1, y1, z1, x2, y2, z2 = gt_list[ind_pairs[:, 0], 0], gt_list[ind_pairs[:, 0], 1], gt_list[ind_pairs[:, 0], 2], \
+                               pred_list[ind_pairs[:, 1], 0], pred_list[ind_pairs[:, 1], 1], pred_list[ind_pairs[:, 1], 2]
+        cost_mat[ind_pairs[:, 0], ind_pairs[:, 1]] = distance_between_cartesian_coordinates(x1, y1, z1, x2, y2, z2)
+
+    row_ind, col_ind = linear_sum_assignment(cost_mat)
+    cost = cost_mat[row_ind, col_ind].sum()
+    return cost
+
+
 def distance_between_spherical_coordinates_rad(az1, ele1, az2, ele2):
     """
     Angular distance between two spherical coordinates
@@ -482,63 +581,71 @@ def compute_seld_metric(sed_error, doa_error):
     return seld_metric
 
 
-def compute_seld_metrics_from_output_format_dict(_pred_dict, _gt_dict, _feat_cls):
-    """
-        Compute SELD metrics between _gt_dict and_pred_dict in DCASE output format
-
-    :param _pred_dict: dcase output format dict
-    :param _gt_dict: dcase output format dict
-    :param _feat_cls: feature or data generator class
-    :return: the seld metrics
-    """
-    _gt_labels = output_format_dict_to_classification_labels(_gt_dict, _feat_cls)
-    _pred_labels = output_format_dict_to_classification_labels(_pred_dict, _feat_cls)
-
-    _er, _f = compute_sed_scores(_pred_labels.max(2), _gt_labels.max(2), _feat_cls.nb_frames_1s())
-    _doa_err, _frame_recall, d1, d2, d3, d4 = compute_doa_scores_clas(_pred_labels, _gt_labels, _feat_cls)
-    _seld_scr = compute_seld_metric([_er, _f], [_doa_err, _frame_recall])
-    return _seld_scr, _er, _f, _doa_err, _frame_recall
+# def compute_seld_metrics_from_output_format_dict(_pred_dict, _gt_dict, _feat_cls):
+#     """
+#         Compute SELD metrics between _gt_dict and_pred_dict in DCASE output format
+#
+#     :param _pred_dict: dcase output format dict
+#     :param _gt_dict: dcase output format dict
+#     :param _feat_cls: feature or data generator class
+#     :return: the seld metrics
+#     """
+#     _gt_labels = output_format_dict_to_classification_labels(_gt_dict, _feat_cls)
+#     _pred_labels = output_format_dict_to_classification_labels(_pred_dict, _feat_cls)
+#
+#     _er, _f = compute_sed_scores(_pred_labels.max(2), _gt_labels.max(2), _feat_cls.nb_frames_1s())
+#     _doa_err, _frame_recall, d1, d2, d3, d4 = compute_doa_scores_clas(_pred_labels, _gt_labels, _feat_cls)
+#     _seld_scr = compute_seld_metric([_er, _f], [_doa_err, _frame_recall])
+#     return _seld_scr, _er, _f, _doa_err, _frame_recall
 
 
 ###############################################################
 # Functions for format conversions
 ###############################################################
 
-def output_format_dict_to_classification_labels(_output_dict, _feat_cls):
+# def output_format_dict_to_classification_labels(_output_dict, _feat_cls):
+#
+#     _unique_classes = _feat_cls.get_classes()
+#     _nb_classes = len(_unique_classes)
+#     _azi_list, _ele_list = _feat_cls.get_azi_ele_list()
+#     _max_frames = _feat_cls.get_nb_frames()
+#     _labels = np.zeros((_max_frames, _nb_classes, len(_azi_list) * len(_ele_list)))
+#
+#     for _frame_cnt in _output_dict.keys():
+#         if _frame_cnt < _max_frames:
+#             for _tmp_doa in _output_dict[_frame_cnt]:
+#                 # Making sure the doa's are within the limits
+#                 _tmp_doa[1] = np.clip(_tmp_doa[1], _azi_list[0], _azi_list[-1])
+#                 _tmp_doa[2] = np.clip(_tmp_doa[2], _ele_list[0], _ele_list[-1])
+#
+#                 # create label
+#                 _labels[_frame_cnt, _tmp_doa[0], int(_feat_cls.get_list_index(_tmp_doa[1], _tmp_doa[2]))] = 1
+#
+#     return _labels
 
-    _unique_classes = _feat_cls.get_classes()
-    _nb_classes = len(_unique_classes)
-    _azi_list, _ele_list = _feat_cls.get_azi_ele_list()
-    _max_frames = _feat_cls.get_nb_frames()
-    _labels = np.zeros((_max_frames, _nb_classes, len(_azi_list) * len(_ele_list)))
 
-    for _frame_cnt in _output_dict.keys():
-        if _frame_cnt < _max_frames:
-            for _tmp_doa in _output_dict[_frame_cnt]:
-                # Making sure the doa's are within the limits
-                _tmp_doa[1] = np.clip(_tmp_doa[1], _azi_list[0], _azi_list[-1])
-                _tmp_doa[2] = np.clip(_tmp_doa[2], _ele_list[0], _ele_list[-1])
-
-                # create label
-                _labels[_frame_cnt, _tmp_doa[0], int(_feat_cls.get_list_index(_tmp_doa[1], _tmp_doa[2]))] = 1
-
-    return _labels
-
-
-def regression_label_format_to_output_format(_feat_cls, _sed_labels, _doa_labels_deg):
+def regression_label_format_to_output_format(_feat_cls, _sed_labels, _doa_labels):
     """
     Converts the sed (classification) and doa labels predicted in regression format to dcase output format.
 
     :param _feat_cls: feature or data generator class instance
     :param _sed_labels: SED labels matrix [nb_frames, nb_classes]
-    :param _doa_labels_deg: DOA labels matrix [nb_frames, 2*nb_classes] in degrees
+    :param _doa_labels: DOA labels matrix [nb_frames, 2*nb_classes] or [nb_frames, 2*nb_classes]
     :return: _output_dict: returns a dict containing dcase output format
     """
 
     _unique_classes = _feat_cls.get_classes()
     _nb_classes = len(_unique_classes)
-    _azi_labels = _doa_labels_deg[:, :_nb_classes]
-    _ele_labels = _doa_labels_deg[:, _nb_classes:]
+    _is_polar = _doa_labels.shape[-1] == 2*_nb_classes
+    _azi_labels, _ele_labels = None, None
+    _x, _y, _z = None, None, None
+    if _is_polar:
+        _azi_labels = _doa_labels[:, :_nb_classes]
+        _ele_labels = _doa_labels[:, _nb_classes:]
+    else:
+        _x = _doa_labels[:, :_nb_classes]
+        _y = _doa_labels[:, _nb_classes:2*_nb_classes]
+        _z = _doa_labels[:, 2*_nb_classes:]
 
     _output_dict = {}
     for _frame_ind in range(_sed_labels.shape[0]):
@@ -546,30 +653,33 @@ def regression_label_format_to_output_format(_feat_cls, _sed_labels, _doa_labels
         if len(_tmp_ind[0]):
             _output_dict[_frame_ind] = []
             for _tmp_class in _tmp_ind[0]:
-                _output_dict[_frame_ind].append([_tmp_class, _azi_labels[_frame_ind, _tmp_class], _ele_labels[_frame_ind, _tmp_class]])
+                if _is_polar:
+                    _output_dict[_frame_ind].append([_tmp_class, _azi_labels[_frame_ind, _tmp_class], _ele_labels[_frame_ind, _tmp_class]])
+                else:
+                    _output_dict[_frame_ind].append([_tmp_class, _x[_frame_ind, _tmp_class], _y[_frame_ind, _tmp_class], _z[_frame_ind, _tmp_class]])
     return _output_dict
 
 
-def classification_label_format_to_output_format(_feat_cls, _labels):
-    """
-    Converts the seld labels predicted in classification format to dcase output format.
-
-    :param _feat_cls: feature or data generator class instance
-    :param _labels: SED labels matrix [nb_frames, nb_classes, nb_azi*nb_ele]
-    :return: _output_dict: returns a dict containing dcase output format
-    """
-    _output_dict = {}
-    for _frame_ind in range(_labels.shape[0]):
-        _tmp_class_ind = np.where(_labels[_frame_ind].sum(1))
-        if len(_tmp_class_ind[0]):
-            _output_dict[_frame_ind] = []
-            for _tmp_class in _tmp_class_ind[0]:
-                _tmp_spatial_ind = np.where(_labels[_frame_ind, _tmp_class])
-                for _tmp_spatial in _tmp_spatial_ind[0]:
-                    _azi, _ele = _feat_cls.get_matrix_index(_tmp_spatial)
-                    _output_dict[_frame_ind].append([_tmp_class, _azi, _ele])
-
-    return _output_dict
+# def classification_label_format_to_output_format(_feat_cls, _labels):
+#     """
+#     Converts the seld labels predicted in classification format to dcase output format.
+#
+#     :param _feat_cls: feature or data generator class instance
+#     :param _labels: SED labels matrix [nb_frames, nb_classes, nb_azi*nb_ele]
+#     :return: _output_dict: returns a dict containing dcase output format
+#     """
+#     _output_dict = {}
+#     for _frame_ind in range(_labels.shape[0]):
+#         _tmp_class_ind = np.where(_labels[_frame_ind].sum(1))
+#         if len(_tmp_class_ind[0]):
+#             _output_dict[_frame_ind] = []
+#             for _tmp_class in _tmp_class_ind[0]:
+#                 _tmp_spatial_ind = np.where(_labels[_frame_ind, _tmp_class])
+#                 for _tmp_spatial in _tmp_spatial_ind[0]:
+#                     _azi, _ele = _feat_cls.get_matrix_index(_tmp_spatial)
+#                     _output_dict[_frame_ind].append([_tmp_class, _azi, _ele])
+#
+#     return _output_dict
 
 
 def description_file_to_output_format(_desc_file_dict, _unique_classes, _hop_length_sec):
@@ -616,7 +726,10 @@ def load_output_format_file(_output_format_file):
         _frame_ind = int(_words[0])
         if _frame_ind not in _output_dict:
             _output_dict[_frame_ind] = []
-        _output_dict[_frame_ind].append([int(_words[1]), int(_words[2]), int(_words[3])])
+        if len(_words)==4:
+            _output_dict[_frame_ind].append([int(_words[1]), int(_words[2]), int(_words[3])])
+        else:
+            _output_dict[_frame_ind].append([int(_words[1]), float(_words[2]), float(_words[3]), float(_words[4])])
     _fid.close()
     return _output_dict
 
@@ -633,5 +746,8 @@ def write_output_format_file(_output_format_file, _output_format_dict):
     # _fid.write('{},{},{},{}\n'.format('frame number with 20ms hop (int)', 'class index (int)', 'azimuth angle (int)', 'elevation angle (int)'))
     for _frame_ind in _output_format_dict.keys():
         for _value in _output_format_dict[_frame_ind]:
-            _fid.write('{},{},{},{}\n'.format(int(_frame_ind), int(_value[0]), int(_value[1]), int(_value[2])))
+            if len(_value)==3:
+                _fid.write('{},{},{},{}\n'.format(int(_frame_ind), int(_value[0]), int(_value[1]), int(_value[2])))
+            else:
+                _fid.write('{},{},{},{}\n'.format(int(_frame_ind), int(_value[0]), float(_value[1]), float(_value[2]), float(_value[3])))
     _fid.close()

@@ -74,7 +74,7 @@ def get_model(data_in, data_out, dropout_rate, nb_cnn2d_filt, pool_size,
 def masked_mse(y_gt, model_out):
     # SED mask: Use only the predicted DOAs when gt SED > 0.5
     sed_out = y_gt[:, :, :11] >= 0.5
-    sed_out = keras.backend.repeat_elements(sed_out, 2, -1)
+    sed_out = keras.backend.repeat_elements(sed_out, 3, -1)
     sed_out = keras.backend.cast(sed_out, 'float32')
 
     # Use the mask to computed mse now. Normalize with the mask weights

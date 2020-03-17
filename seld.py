@@ -44,7 +44,7 @@ def segment_labels(_pred_dict, _max_frames, _frames_seg):
                 block_frame = audio_frame - frame_cnt
                 if block_frame not in loc_dict[value[0]]:
                     loc_dict[value[0]][block_frame] = []
-                loc_dict[value[0]][block_frame].append([value[1], value[2]])
+                loc_dict[value[0]][block_frame].append(value[1:])
 
         # Update the block wise details collected above in a global structure
         for class_cnt in loc_dict:
@@ -202,11 +202,7 @@ def main(argv):
         gt = collect_test_labels(data_gen_val, data_out, params['quick_test'])
         sed_gt = evaluation_metrics.reshape_3Dto2D(gt[0])
         doa_gt = evaluation_metrics.reshape_3Dto2D(gt[1])
-
-        # rescaling the reference elevation data from [-180 180] to [-def_elevation def_elevation] for scoring purpose
         nb_classes = data_gen_train.get_nb_classes()
-        def_elevation = data_gen_train.get_default_elevation()
-        doa_gt[:, nb_classes:] = doa_gt[:, nb_classes:] / (180. / def_elevation)
 
         print('MODEL:\n\tdropout_rate: {}\n\tCNN: nb_cnn_filt: {}, pool_size{}\n\trnn_size: {}, fnn_size: {}\n\tdoa_objective: {}\n'.format(
             params['dropout_rate'], params['nb_cnn2d_filt'], params['pool_size'], params['rnn_size'],
@@ -252,7 +248,6 @@ def main(argv):
             sed_pred = evaluation_metrics.reshape_3Dto2D(pred[0]) > 0.5
             doa_pred = evaluation_metrics.reshape_3Dto2D(pred[1] if params['doa_objective'] is 'mse' else pred[1][:, :, nb_classes:])
 
-
             sed_metric[epoch_cnt, :] = evaluation_metrics.compute_sed_scores(sed_pred, sed_gt, data_gen_val.nb_frames_1s())
             doa_metric[epoch_cnt, :] = evaluation_metrics.compute_doa_scores_regr_xyz(doa_pred, doa_gt, sed_pred, sed_gt)
             seld_metric[epoch_cnt] = evaluation_metrics.compute_seld_metric(sed_metric[epoch_cnt, :], doa_metric[epoch_cnt, :])
@@ -260,16 +255,16 @@ def main(argv):
             # new SELD scores
             cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_val.get_nb_classes(), doa_threshold=20)
             pred_dict = evaluation_metrics.regression_label_format_to_output_format(
-                data_gen_val, sed_pred, doa_pred * 180 / np.pi
+                data_gen_val, sed_pred, doa_pred
             )
             gt_dict = evaluation_metrics.regression_label_format_to_output_format(
-                data_gen_val, sed_gt, doa_gt * 180 / np.pi
+                data_gen_val, sed_gt, doa_gt
             )
 
             pred_blocks_dict = segment_labels(pred_dict, sed_pred.shape[0], data_gen_val.nb_frames_1s())
             gt_blocks_dict = segment_labels(gt_dict, sed_gt.shape[0], data_gen_val.nb_frames_1s())
 
-            cls_new_metric.update_seld_scores(pred_blocks_dict, gt_blocks_dict)
+            cls_new_metric.update_seld_scores_xyz(pred_blocks_dict, gt_blocks_dict)
             new_metric[epoch_cnt, :] = cls_new_metric.compute_seld_scores()
             new_seld_metric[epoch_cnt] = evaluation_metrics.compute_seld_metric(new_metric[epoch_cnt, :2], new_metric[epoch_cnt, 2:])
 
@@ -329,9 +324,6 @@ def main(argv):
         test_sed_pred = evaluation_metrics.reshape_3Dto2D(pred_test[0]) > 0.5
         test_doa_pred = evaluation_metrics.reshape_3Dto2D(pred_test[1] if params['doa_objective'] is 'mse' else pred_test[1][:, :, nb_classes:])
 
-        # rescaling the elevation data from [-180 180] to [-def_elevation def_elevation] for scoring purpose
-        test_doa_pred[:, nb_classes:] = test_doa_pred[:, nb_classes:] / (180. / def_elevation)
-
         if params['dcase_output']:
             # Dump results in DCASE output format for calculating final scores
             dcase_dump_folder = os.path.join(params['dcase_dir'], '{}_{}_{}'.format(task_id, params['dataset'], params['mode']))
@@ -352,7 +344,7 @@ def main(argv):
                 output_dict = evaluation_metrics.regression_label_format_to_output_format(
                     data_gen_test,
                     test_sed_pred[dc:dc + max_frames_with_content, :],
-                    test_doa_pred[dc:dc + max_frames_with_content, :] * 180 / np.pi
+                    test_doa_pred[dc:dc + max_frames_with_content, :]
                 )
                 evaluation_metrics.write_output_format_file(output_file, output_dict)
 
@@ -361,26 +353,24 @@ def main(argv):
             test_gt = collect_test_labels(data_gen_test, test_data_out, params['quick_test'])
             test_sed_gt = evaluation_metrics.reshape_3Dto2D(test_gt[0])
             test_doa_gt = evaluation_metrics.reshape_3Dto2D(test_gt[1])
-            # rescaling the reference elevation from [-180 180] to [-def_elevation def_elevation] for scoring purpose
-            test_doa_gt[:, nb_classes:] = test_doa_gt[:, nb_classes:] / (180. / def_elevation)
 
             test_sed_loss = evaluation_metrics.compute_sed_scores(test_sed_pred, test_sed_gt, data_gen_test.nb_frames_1s())
-            test_doa_loss = evaluation_metrics.compute_doa_scores_regr(test_doa_pred, test_doa_gt, test_sed_pred, test_sed_gt)
+            test_doa_loss = evaluation_metrics.compute_doa_scores_regr_xyz(test_doa_pred, test_doa_gt, test_sed_pred, test_sed_gt)
             test_metric_loss = evaluation_metrics.compute_seld_metric(test_sed_loss, test_doa_loss)
 
             # new SELD scores
             cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_test.get_nb_classes())
             test_pred_dict = evaluation_metrics.regression_label_format_to_output_format(
-                data_gen_test, test_sed_pred, test_doa_pred * 180 / np.pi
+                data_gen_test, test_sed_pred, test_doa_pred
             )
             test_gt_dict = evaluation_metrics.regression_label_format_to_output_format(
-                data_gen_test, test_sed_gt, test_doa_gt * 180 / np.pi
+                data_gen_test, test_sed_gt, test_doa_gt
             )
 
             test_pred_blocks_dict = segment_labels(test_pred_dict, test_sed_pred.shape[0], data_gen_test.nb_frames_1s())
             test_gt_blocks_dict = segment_labels(test_gt_dict, test_sed_gt.shape[0], data_gen_test.nb_frames_1s())
 
-            cls_new_metric.update_seld_scores(test_pred_blocks_dict, test_gt_blocks_dict)
+            cls_new_metric.update_seld_scores_xyz(test_pred_blocks_dict, test_gt_blocks_dict)
             test_new_metric = cls_new_metric.compute_seld_scores()
             test_new_seld_metric = evaluation_metrics.compute_seld_metric(test_new_metric[:2], test_new_metric[2:])
 
