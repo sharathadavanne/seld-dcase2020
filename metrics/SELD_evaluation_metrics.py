@@ -15,7 +15,7 @@ eps = np.finfo(np.float).eps
 
 
 class SELDMetrics(object):
-    def __init__(self, doa_threshold=10, nb_classes=11):
+    def __init__(self, doa_threshold=20, nb_classes=11):
         '''
             This class implements both the class-sensitive localization and location-sensitive detection metrics.
             Additionally, based on the user input, the corresponding averaging is performed within the segment.
@@ -57,7 +57,11 @@ class SELDMetrics(object):
         F = 2 * prec * recall / (prec + recall + eps)
 
         # Class-sensitive localization performance
-        DE = self._total_DE / float(self._DE_TP + eps)
+        if self._DE_TP:
+            DE = self._total_DE / float(self._DE_TP + eps)
+        else:
+            # When the total number of prediction is zero
+            DE = 180
 
         DE_prec = float(self._DE_TP) / float(self._Nsys + eps)
         DE_recall = float(self._DE_TP) / float(self._Nref + eps)
@@ -232,6 +236,8 @@ def distance_between_cartesian_coordinates(x1, y1, z1, x2, y2, z2):
     :return: angular distance in degrees
     """
     dist = np.sqrt((x1-x2) ** 2 + (y1-y2) ** 2 + (z1-z2) ** 2)
+    # Making sure the dist values are in -1 to 1 range, else np.arccos kills the job
+    dist = np.clip(dist, -1, 1)
     dist = 2 * np.arcsin(dist / 2.0) * 180/np.pi
     return dist
 

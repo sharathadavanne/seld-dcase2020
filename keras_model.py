@@ -46,7 +46,7 @@ def get_model(data_in, data_out, dropout_rate, nb_cnn2d_filt, pool_size,
         doa = Dropout(dropout_rate)(doa)
 
     doa = TimeDistributed(Dense(data_out[1][-1]))(doa)
-    doa = Activation('linear', name='doa_out')(doa)
+    doa = Activation('tanh', name='doa_out')(doa)
 
     # FC - SED
     sed = spec_rnn

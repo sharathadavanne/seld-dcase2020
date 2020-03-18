@@ -359,7 +359,7 @@ def main(argv):
             test_metric_loss = evaluation_metrics.compute_seld_metric(test_sed_loss, test_doa_loss)
 
             # new SELD scores
-            cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_test.get_nb_classes())
+            cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_test.get_nb_classes(), doa_threshold=20)
             test_pred_dict = evaluation_metrics.regression_label_format_to_output_format(
                 data_gen_test, test_sed_pred, test_doa_pred
             )
@@ -376,7 +376,7 @@ def main(argv):
 
             avg_scores_test.append([test_new_metric[0], test_new_metric[1], test_new_metric[2], test_new_metric[3], test_new_seld_metric])
             print('Results on test split:')
-            print('\tOld Metrics: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_FR: {:0.2f}, SELD: {:0.2f}'.format(test_doa_loss[0], test_doa_loss[1], test_sed_loss[0], test_sed_loss[1], test_metric_loss))
+            print('\tOld Metrics: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_FR: {:0.2f}, SELD: {:0.2f}'.format(test_sed_loss[0], test_sed_loss[1], test_doa_loss[0], test_doa_loss[1], test_metric_loss))
             print('\tNew Metrics: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_FR: {:0.2f}, SELD: {:0.2f}'.format(test_new_metric[0], test_new_metric[1], test_new_metric[2], test_new_metric[3], test_new_seld_metric))
 
     print('\n\nValidation split scores per fold:')

@@ -32,8 +32,8 @@ def get_params(argv):
         pool_size=[4, 4, 4],        # CNN pooling, length of list = number of CNN layers, list value = pooling per layer
         rnn_size=[128, 128],        # RNN contents, length of list = number of layers, list value = number of nodes
         fnn_size=[128],             # FNN contents, length of list = number of layers, list value = number of nodes
-        loss_weights=[1., 100.],     # [sed, doa] weight for scaling the DNN outputs
-        nb_epochs=200,               # Train for maximum epochs
+        loss_weights=[1., 1000.],     # [sed, doa] weight for scaling the DNN outputs
+        nb_epochs=50,               # Train for maximum epochs
         epochs_per_fit=5,           # Number of epochs per fit
         doa_objective='masked_mse',     # supports: mse, masked_mse. mse- original seld approach; masked_mse - dcase 2020 approach
     )
@@ -70,7 +70,7 @@ def get_params(argv):
     elif argv == '22':
         params['mode'] = 'dev'
         params['dataset'] = 'mic'
-        params['loss_weights']=[1., 50.]
+        params['loss_weights']=[1., 10000.]
 
 
     elif argv == '23':
@@ -84,7 +84,7 @@ def get_params(argv):
     elif argv == '25':
         params['mode'] = 'dev'
         params['dataset'] = 'foa'
-        params['loss_weights']=[1., 50.]
+        params['loss_weights']=[1., 10000.]
 
     elif argv == '6':
         params['mode'] = 'dev'

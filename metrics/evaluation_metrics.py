@@ -523,6 +523,8 @@ def distance_between_cartesian_coordinates(x1, y1, z1, x2, y2, z2):
     :return: angular distance in degrees
     """
     dist = np.sqrt((x1-x2) ** 2 + (y1-y2) ** 2 + (z1-z2) ** 2)
+    # Making sure the dist values are in -1 to 1 range, else np.arccos kills the job
+    dist = np.clip(dist, -1, 1)
     dist = 2 * np.arcsin(dist / 2.0) * 180/np.pi
     return dist
 
