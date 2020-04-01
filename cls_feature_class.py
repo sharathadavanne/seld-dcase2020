@@ -19,7 +19,7 @@ def nCr(n, r):
 
 
 class FeatureClass:
-    def __init__(self, dataset_dir='', feat_label_dir='', dataset='foa', is_eval=False):
+    def __init__(self, params, is_eval=False):
         """
 
         :param dataset: string, dataset name, supported: foa - ambisonic or mic- microphone format
@@ -27,9 +27,9 @@ class FeatureClass:
         """
 
         # Input directories
-        self._feat_label_dir = feat_label_dir
-        self._dataset_dir = dataset_dir
-        self._dataset_combination = '{}_{}'.format(dataset, 'eval' if is_eval else 'dev')
+        self._feat_label_dir = params['feat_label_dir']
+        self._dataset_dir = params['dataset_dir']
+        self._dataset_combination = '{}_{}'.format(params['dataset'], 'eval' if is_eval else 'dev')
         self._aud_dir = os.path.join(self._dataset_dir, self._dataset_combination)
 
         self._desc_dir = None if is_eval else os.path.join(self._dataset_dir, 'metadata_dev')
@@ -42,61 +42,37 @@ class FeatureClass:
         # Local parameters
         self._is_eval = is_eval
 
-        self._fs = 24000
-        self._hop_len_s = 0.01
+        self._fs = params['fs']
+        self._hop_len_s = params['hop_len_s']
         self._hop_len = int(self._fs * self._hop_len_s)
-        self._frame_res = self._fs / float(self._hop_len)
-        self._nb_frames_1s = int(self._frame_res)
 
-        self._win_len = 4 * self._hop_len
+        self._label_hop_len_s = params['label_hop_len_s']
+        self._label_hop_len = int(self._fs * self._label_hop_len_s)
+        self._label_frame_res = self._fs / float(self._label_hop_len)
+        self._nb_label_frames_1s = int(self._label_frame_res)
+
+        self._win_len = 2 * self._hop_len
         self._nfft = self._next_greater_power_of_2(self._win_len)
-        self._nb_mel_bins = 128
+        self._nb_mel_bins = params['nb_mel_bins']
         self._mel_wts = librosa.filters.mel(sr=self._fs, n_fft=self._nfft, n_mels=self._nb_mel_bins).T
 
-        self._dataset = dataset
-        self._eps = np.spacing(np.float(1e-16))
+        self._dataset = params['dataset']
+        self._eps = 1e-8
         self._nb_channels = 4
 
-        # Sound event classes dictionary # DCASE 2016 Task 2 sound events
-        self._unique_classes = dict()
-        self._unique_classes = \
-            {
-                'clearthroat': 2,
-                'cough': 8,
-                'doorslam': 9,
-                'drawer': 1,
-                'keyboard': 6,
-                'keysDrop': 4,
-                'knock': 0,
-                'laughter': 10,
-                'pageturn': 7,
-                'phone': 3,
-                'speech': 5
-            }
-
-        self._doa_resolution = 10
-        self._azi_list = range(-180, 180, self._doa_resolution)
-        self._length = len(self._azi_list)
-        self._ele_list = range(-40, 50, self._doa_resolution)
-        self._height = len(self._ele_list)
-
-        self._audio_max_len_samples = 60 * self._fs  # TODO: Fix the audio synthesis code to always generate 60s of
+        # Sound event classes dictionary
+        self._unique_classes = params['unique_classes']
+        self._audio_max_len_samples = params['max_audio_len_s'] * self._fs  # TODO: Fix the audio synthesis code to always generate 60s of
         # audio. Currently it generates audio till the last active sound event, which is not always 60s long. This is a
         # quick fix to overcome that. We need this because, for processing and training we need the length of features
         # to be fixed.
 
         # For regression task only
         self._default_azi = 180
-        self._default_ele = 50
+        self._default_ele = 90
 
-        if self._default_azi in self._azi_list:
-            print('ERROR: chosen default_azi value {} should not exist in azi_list'.format(self._default_azi))
-            exit()
-        if self._default_ele in self._ele_list:
-            print('ERROR: chosen default_ele value {} should not exist in ele_list'.format(self._default_ele))
-            exit()
-
-        self._max_frames = int(np.ceil(self._audio_max_len_samples / float(self._hop_len)))
+        self._max_feat_frames = int(np.ceil(self._audio_max_len_samples / float(self._hop_len)))
+        self._max_label_frames = int(np.ceil(self._audio_max_len_samples / float(self._label_hop_len)))
 
     def _load_audio(self, audio_path):
         fs, audio = wav.read(audio_path)
@@ -116,11 +92,11 @@ class FeatureClass:
     def _spectrogram(self, audio_input):
         _nb_ch = audio_input.shape[1]
         nb_bins = self._nfft // 2
-        spectra = np.zeros((self._max_frames, nb_bins+1, _nb_ch), dtype=complex)
+        spectra = np.zeros((self._max_feat_frames, nb_bins + 1, _nb_ch), dtype=complex)
         for ch_cnt in range(_nb_ch):
-            stft_ch = librosa.core.stft(audio_input[:, ch_cnt], n_fft=self._nfft, hop_length=self._hop_len,
+            stft_ch = librosa.core.stft(np.asfortranarray(audio_input[:, ch_cnt]), n_fft=self._nfft, hop_length=self._hop_len,
                                         win_length=self._win_len, window='hann')
-            spectra[:, :, ch_cnt] = stft_ch[:, :self._max_frames].T
+            spectra[:, :, ch_cnt] = stft_ch[:, :self._max_feat_frames].T
         return spectra
 
     def _get_mel_spectrogram(self, linear_spectra):
@@ -138,7 +114,7 @@ class FeatureClass:
         I2 = np.real(np.conj(linear_spectra[:, :, 0]) * linear_spectra[:, :, 2])
         I3 = np.real(np.conj(linear_spectra[:, :, 0]) * linear_spectra[:, :, 3])
 
-        normal = np.sqrt(I1**2 + I2**2 + I3**2)
+        normal = np.sqrt(I1**2 + I2**2 + I3**2) + self._eps
         I1 = np.dot(I1 / normal, self._mel_wts)
         I2 = np.dot(I2 / normal, self._mel_wts)
         I3 = np.dot(I3 / normal, self._mel_wts)
@@ -170,65 +146,6 @@ class FeatureClass:
         return audio_spec
 
     # OUTPUT LABELS
-    def read_desc_file(self, desc_filename, in_sec=False):
-        desc_file = {
-            'class': list(), 'start': list(), 'end': list(), 'ele': list(), 'azi': list()
-        }
-        fid = open(desc_filename, 'r')
-        next(fid)
-        for line in fid:
-            split_line = line.strip().split(',')
-            desc_file['class'].append(split_line[0])
-            # desc_file['class'].append(split_line[0].split('.')[0][:-3])
-            if in_sec:
-                # return onset-offset time in seconds
-                desc_file['start'].append(float(split_line[1]))
-                desc_file['end'].append(float(split_line[2]))
-            else:
-                # return onset-offset time in frames
-                desc_file['start'].append(int(np.floor(float(split_line[1])*self._frame_res)))
-                desc_file['end'].append(int(np.ceil(float(split_line[2])*self._frame_res)))
-            desc_file['ele'].append(int(split_line[3]))
-            desc_file['azi'].append(int(split_line[4]))
-        fid.close()
-        return desc_file
-
-    def get_list_index(self, azi, ele):
-        azi = (azi - self._azi_list[0]) // 10
-        ele = (ele - self._ele_list[0]) // 10
-        return azi * self._height + ele
-
-    def get_matrix_index(self, ind):
-        azi, ele = ind // self._height, ind % self._height
-        azi = (azi * 10 + self._azi_list[0])
-        ele = (ele * 10 + self._ele_list[0])
-        return azi, ele
-
-    def _get_doa_labels_regr(self, _desc_file):
-        azi_label = self._default_azi*np.ones((self._max_frames, len(self._unique_classes)))
-        ele_label = self._default_ele*np.ones((self._max_frames, len(self._unique_classes)))
-        for i, ele_ang in enumerate(_desc_file['ele']):
-            start_frame = _desc_file['start'][i]
-            end_frame = self._max_frames if _desc_file['end'][i] > self._max_frames else _desc_file['end'][i]
-            azi_ang = _desc_file['azi'][i]
-            class_ind = self._unique_classes[_desc_file['class'][i]]
-            if (azi_ang >= self._azi_list[0]) & (azi_ang <= self._azi_list[-1]) & \
-                    (ele_ang >= self._ele_list[0]) & (ele_ang <= self._ele_list[-1]):
-                azi_label[start_frame:end_frame + 1, class_ind] = azi_ang
-                ele_label[start_frame:end_frame + 1, class_ind] = ele_ang
-            else:
-                print('bad_angle {} {}'.format(azi_ang, ele_ang))
-        doa_label_regr = np.concatenate((azi_label, ele_label), axis=1)
-        return doa_label_regr
-
-    def _get_se_labels(self, _desc_file):
-        se_label = np.zeros((self._max_frames, len(self._unique_classes)))
-        for i, se_class in enumerate(_desc_file['class']):
-            start_frame = _desc_file['start'][i]
-            end_frame = self._max_frames if _desc_file['end'][i] > self._max_frames else _desc_file['end'][i]
-            se_label[start_frame:end_frame + 1, self._unique_classes[se_class]] = 1
-        return se_label
-
     def get_labels_for_file(self, _desc_file):
         """
         Reads description csv file and returns classification based SED labels and regression based DOA labels
@@ -241,31 +158,19 @@ class FeatureClass:
         self._default_ele and self._default_azi
         """
 
-        se_label = self._get_se_labels(_desc_file)
-        doa_label = self._get_doa_labels_regr(_desc_file)
-        label_mat = np.concatenate((se_label, doa_label), axis=1)
-        # print(label_mat.shape)
+        se_label = np.zeros((self._max_label_frames, len(self._unique_classes)))
+        azi_label = self._default_azi*np.ones((self._max_label_frames, len(self._unique_classes)))
+        ele_label = self._default_ele*np.ones((self._max_label_frames, len(self._unique_classes)))
+
+        for frame_ind, active_event_list in _desc_file.items():
+            if frame_ind < self._max_feat_frames:
+                for active_event in active_event_list:
+                    se_label[frame_ind, active_event[0]-1] = 1
+                    azi_label[frame_ind, active_event[0]-1] = active_event[1]
+                    ele_label[frame_ind, active_event[0]-1] = active_event[2]
+
+        label_mat = np.concatenate((se_label, azi_label, ele_label), axis=1)
         return label_mat
-
-    def get_clas_labels_for_file(self, _desc_file):
-        """
-        Reads description file and returns classification format labels for SELD
-
-        :param _desc_file: csv file
-        :return: _labels: matrix of SELD labels of dimension [nb_frames, nb_classes, nb_azi*nb_ele],
-                          which is 1 for active sound event and location else zero
-        """
-
-        _labels = np.zeros((self._max_frames, len(self._unique_classes), len(self._azi_list) * len(self._ele_list)))
-        for _ind, _start_frame in enumerate(_desc_file['start']):
-            _tmp_class = self._unique_classes[_desc_file['class'][_ind]]
-            _tmp_azi = _desc_file['azi'][_ind]
-            _tmp_ele = _desc_file['ele'][_ind]
-            _tmp_end = self._max_frames if _desc_file['end'][_ind] > self._max_frames else _desc_file['end'][_ind]
-            _tmp_ind = self.get_list_index(_tmp_azi, _tmp_ele)
-            _labels[_start_frame:_tmp_end + 1, _tmp_class, _tmp_ind] = 1
-
-        return _labels
 
     # ------------------------------- EXTRACT FEATURE AND PREPROCESS IT -------------------------------
     def extract_all_feature(self):
@@ -279,7 +184,6 @@ class FeatureClass:
             self._aud_dir, self._desc_dir, self._feat_dir))
 
         for file_cnt, file_name in enumerate(os.listdir(self._aud_dir)):
-            print('{}: {}'.format(file_cnt, file_name))
             wav_filename = '{}.wav'.format(file_name.split('.')[0])
             spect = self._get_spectrogram_for_file(wav_filename)
 
@@ -305,6 +209,7 @@ class FeatureClass:
             # plot.show()
 
             if feat is not None:
+                print('{}: {}, {}'.format(file_cnt, file_name, feat.shape ))
                 np.save(os.path.join(self._feat_dir, '{}.npy'.format(wav_filename.split('.')[0])), feat)
 
     def preprocess_features(self):
@@ -360,11 +265,52 @@ class FeatureClass:
         create_folder(self._label_dir)
 
         for file_cnt, file_name in enumerate(os.listdir(self._desc_dir)):
-            print('{}: {}'.format(file_cnt, file_name))
             wav_filename = '{}.wav'.format(file_name.split('.')[0])
-            desc_file = self.read_desc_file(os.path.join(self._desc_dir, file_name))
+            desc_file = self.load_output_format_file(os.path.join(self._desc_dir, file_name))
             label_mat = self.get_labels_for_file(desc_file)
+            print('{}: {}, {}'.format(file_cnt, file_name, label_mat.shape))
             np.save(os.path.join(self._label_dir, '{}.npy'.format(wav_filename.split('.')[0])), label_mat)
+
+    # -------------------------------  DCASE OUTPUT  FORMAT FUNCTIONS -------------------------------
+    def load_output_format_file(self, _output_format_file):
+        """
+        Loads DCASE output format csv file and returns it in dictionary format
+
+        :param _output_format_file: DCASE output format CSV
+        :return: _output_dict: dictionary
+        """
+        _output_dict = {}
+        _fid = open(_output_format_file, 'r')
+        # next(_fid)
+        for _line in _fid:
+            _words = _line.strip().split(',')
+            _frame_ind = int(_words[0])
+            if _frame_ind not in _output_dict:
+                _output_dict[_frame_ind] = []
+            if len(_words) == 4:
+                _output_dict[_frame_ind].append([int(_words[1]), int(_words[2]), int(_words[3])])
+            else:
+                _output_dict[_frame_ind].append([int(_words[1]), float(_words[2]), float(_words[3]), float(_words[4])])
+        _fid.close()
+        return _output_dict
+
+    def write_output_format_file(self, _output_format_file, _output_format_dict):
+        """
+        Writes DCASE output format csv file, given output format dictionary
+
+        :param _output_format_file:
+        :param _output_format_dict:
+        :return:
+        """
+        _fid = open(_output_format_file, 'w')
+        # _fid.write('{},{},{},{}\n'.format('frame number with 20ms hop (int)', 'class index (int)', 'azimuth angle (int)', 'elevation angle (int)'))
+        for _frame_ind in _output_format_dict.keys():
+            for _value in _output_format_dict[_frame_ind]:
+                if len(_value)==3:
+                    _fid.write('{},{},{},{}\n'.format(int(_frame_ind), int(_value[0]), int(_value[1]), int(_value[2])))
+                else:
+                    _fid.write('{},{},{},{}\n'.format(int(_frame_ind), int(_value[0]), float(_value[1]), float(_value[2]), float(_value[3])))
+        _fid.close()
 
     # ------------------------------- Misc public functions -------------------------------
     def get_classes(self):
@@ -403,7 +349,7 @@ class FeatureClass:
         return self._nb_channels
 
     def nb_frames_1s(self):
-        return self._nb_frames_1s
+        return self._nb_label_frames_1s
 
     def get_hop_len_sec(self):
         return self._hop_len_s
@@ -412,7 +358,7 @@ class FeatureClass:
         return self._azi_list, self._ele_list
 
     def get_nb_frames(self):
-        return self._max_frames
+        return self._max_label_frames
 
     def get_nb_mel_bins(self):
         return self._nb_mel_bins

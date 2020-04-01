@@ -59,7 +59,7 @@ def segment_labels(_pred_dict, _max_frames, _frames_seg):
     return output_dict
 
 
-def collect_test_labels(_data_gen_test, _data_out, quick_test):
+def collect_test_labels(_data_gen_test, _data_out, _nb_classes, quick_test):
     # Collecting ground truth for test data
     nb_batch = 2 if quick_test else _data_gen_test.get_total_batches_in_data()
 
@@ -74,7 +74,7 @@ def collect_test_labels(_data_gen_test, _data_out, quick_test):
         if _data_gen_test.get_data_gen_mode():
             doa_label = tmp_label[1]
         else:
-            doa_label = tmp_label[1][:, :, 11:]
+            doa_label = tmp_label[1][:, :, _nb_classes:]
         gt_doa[cnt * batch_size:(cnt + 1) * batch_size, :, :] = doa_label
         cnt = cnt + 1
         if cnt == nb_batch:
@@ -157,9 +157,9 @@ def main(argv):
 
         # SUGGESTION: Considering the long training time, major tuning of the method can be done on the first split.
         # Once you finlaize the method you can evaluate its performance on the complete cross-validation splits
-        test_splits = [1]
+        test_splits = [2]
         val_splits = [2]
-        train_splits = [[3, 4]]
+        train_splits = [[1, 2]]
 
     elif params['mode'] == 'eval':
         test_splits = [0]
@@ -185,32 +185,30 @@ def main(argv):
         # Load train and validation data
         print('Loading training dataset:')
         data_gen_train = cls_data_generator.DataGenerator(
-            dataset=params['dataset'], split=train_splits[split_cnt], batch_size=params['batch_size'],
-            seq_len=params['sequence_length'], feat_label_dir=params['feat_label_dir']
+            params=params, split=train_splits[split_cnt]
         )
 
         print('Loading validation dataset:')
         data_gen_val = cls_data_generator.DataGenerator(
-            dataset=params['dataset'], split=val_splits[split_cnt], batch_size=params['batch_size'],
-            seq_len=params['sequence_length'], feat_label_dir=params['feat_label_dir'], shuffle=False
+            params=params, split=val_splits[split_cnt], shuffle=False
         )
 
         # Collect the reference labels for validation data
         data_in, data_out = data_gen_train.get_data_sizes()
         print('FEATURES:\n\tdata_in: {}\n\tdata_out: {}\n'.format(data_in, data_out))
 
-        gt = collect_test_labels(data_gen_val, data_out, params['quick_test'])
+        nb_classes = data_gen_train.get_nb_classes()
+        gt = collect_test_labels(data_gen_val, data_out, nb_classes, params['quick_test'])
         sed_gt = evaluation_metrics.reshape_3Dto2D(gt[0])
         doa_gt = evaluation_metrics.reshape_3Dto2D(gt[1])
-        nb_classes = data_gen_train.get_nb_classes()
 
-        print('MODEL:\n\tdropout_rate: {}\n\tCNN: nb_cnn_filt: {}, pool_size{}\n\trnn_size: {}, fnn_size: {}\n\tdoa_objective: {}\n'.format(
-            params['dropout_rate'], params['nb_cnn2d_filt'], params['pool_size'], params['rnn_size'],
+        print('MODEL:\n\tdropout_rate: {}\n\tCNN: nb_cnn_filt: {}, f_pool_size{}, t_pool_size{}\n\trnn_size: {}, fnn_size: {}\n\tdoa_objective: {}\n'.format(
+            params['dropout_rate'], params['nb_cnn2d_filt'], params['f_pool_size'], params['t_pool_size'], params['rnn_size'],
             params['fnn_size'], params['doa_objective']))
 
         print('Using loss weights : {}'.format(params['loss_weights']))
         model = keras_model.get_model(data_in=data_in, data_out=data_out, dropout_rate=params['dropout_rate'],
-                                      nb_cnn2d_filt=params['nb_cnn2d_filt'], pool_size=params['pool_size'],
+                                      nb_cnn2d_filt=params['nb_cnn2d_filt'], f_pool_size=params['f_pool_size'], t_pool_size=params['t_pool_size'],
                                       rnn_size=params['rnn_size'], fnn_size=params['fnn_size'],
                                       weights=params['loss_weights'], doa_objective=params['doa_objective'])
         best_seld_metric = 99999
@@ -308,9 +306,7 @@ def main(argv):
         # ------------------  Calculate metric scores for unseen test split ---------------------------------
         print('Loading testing dataset:')
         data_gen_test = cls_data_generator.DataGenerator(
-            dataset=params['dataset'], split=split, batch_size=params['batch_size'], seq_len=params['sequence_length'],
-            feat_label_dir=params['feat_label_dir'], shuffle=False, per_file=params['dcase_output'],
-            is_eval=True if params['mode'] is 'eval' else False
+            params=params, split=split, shuffle=False
         )
 
         print('\nLoading the best model and predicting results on the testing split')
@@ -346,11 +342,11 @@ def main(argv):
                     test_sed_pred[dc:dc + max_frames_with_content, :],
                     test_doa_pred[dc:dc + max_frames_with_content, :]
                 )
-                evaluation_metrics.write_output_format_file(output_file, output_dict)
+                data_gen_test.write_output_format_file(output_file, output_dict)
 
         if params['mode'] is 'dev':
             test_data_in, test_data_out = data_gen_test.get_data_sizes()
-            test_gt = collect_test_labels(data_gen_test, test_data_out, params['quick_test'])
+            test_gt = collect_test_labels(data_gen_test, test_data_out, nb_classes, params['quick_test'])
             test_sed_gt = evaluation_metrics.reshape_3Dto2D(test_gt[0])
             test_doa_gt = evaluation_metrics.reshape_3Dto2D(test_gt[1])
 
