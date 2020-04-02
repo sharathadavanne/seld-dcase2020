@@ -16,49 +16,6 @@ plot.switch_backend('agg')
 from IPython import embed
 
 
-def segment_labels(_pred_dict, _max_frames, _frames_seg):
-    '''
-        Collects class-wise sound event location information in segments of length _frames_seg from reference dataset
-    :param _pred_dict: Dictionary containing frame-wise sound event time and location information. Output of SELD method
-    :param _max_frames: Total number of frames in the recording
-    :param _frames_seg: Number of frames in one segment
-    :return: Dictionary containing class-wise sound event location information in each segment of audio
-            dictionary_name[segment-index][class-index] = list(frame-cnt-within-segment, azimuth, elevation)
-    '''
-    nb_blocks = int(np.ceil(_max_frames/float(_frames_seg)))
-    output_dict = {x: {} for x in range(nb_blocks)}
-    for frame_cnt in range(0, _max_frames, _frames_seg):
-
-        # Collect class-wise information for each block
-        # [class][frame] = <list of doa values>
-        # Data structure supports multi-instance occurence of same class
-        block_cnt = frame_cnt // _frames_seg
-        loc_dict = {}
-        for audio_frame in range(frame_cnt, frame_cnt+_frames_seg):
-            if audio_frame not in _pred_dict:
-                continue
-            for value in _pred_dict[audio_frame]:
-                if value[0] not in loc_dict:
-                    loc_dict[value[0]] = {}
-
-                block_frame = audio_frame - frame_cnt
-                if block_frame not in loc_dict[value[0]]:
-                    loc_dict[value[0]][block_frame] = []
-                loc_dict[value[0]][block_frame].append(value[1:])
-
-        # Update the block wise details collected above in a global structure
-        for class_cnt in loc_dict:
-            if class_cnt not in output_dict[block_cnt]:
-                output_dict[block_cnt][class_cnt] = []
-
-            keys = [k for k in loc_dict[class_cnt]]
-            values = [loc_dict[class_cnt][k] for k in loc_dict[class_cnt]]
-
-            output_dict[block_cnt][class_cnt].append([keys, values])
-
-    return output_dict
-
-
 def collect_test_labels(_data_gen_test, _data_out, _nb_classes, quick_test):
     # Collecting ground truth for test data
     nb_batch = 2 if quick_test else _data_gen_test.get_total_batches_in_data()
@@ -149,6 +106,7 @@ def main(argv):
 
     job_id = 1 if len(argv) < 3 else argv[-1]
 
+    feat_cls = cls_feature_class.FeatureClass(params)
     train_splits, val_splits, test_splits = None, None, None
     if params['mode'] == 'dev':
         # test_splits = [1, 2, 3, 4]
@@ -248,23 +206,23 @@ def main(argv):
 
             sed_metric[epoch_cnt, :] = evaluation_metrics.compute_sed_scores(sed_pred, sed_gt, data_gen_val.nb_frames_1s())
             doa_metric[epoch_cnt, :] = evaluation_metrics.compute_doa_scores_regr_xyz(doa_pred, doa_gt, sed_pred, sed_gt)
-            seld_metric[epoch_cnt] = evaluation_metrics.compute_seld_metric(sed_metric[epoch_cnt, :], doa_metric[epoch_cnt, :])
+            seld_metric[epoch_cnt] = evaluation_metrics.early_stopping_metric(sed_metric[epoch_cnt, :], doa_metric[epoch_cnt, :])
 
             # new SELD scores
             cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_val.get_nb_classes(), doa_threshold=20)
-            pred_dict = evaluation_metrics.regression_label_format_to_output_format(
-                data_gen_val, sed_pred, doa_pred
+            pred_dict = feat_cls.regression_label_format_to_output_format(
+                sed_pred, doa_pred
             )
-            gt_dict = evaluation_metrics.regression_label_format_to_output_format(
-                data_gen_val, sed_gt, doa_gt
+            gt_dict = feat_cls.regression_label_format_to_output_format(
+                sed_gt, doa_gt
             )
 
-            pred_blocks_dict = segment_labels(pred_dict, sed_pred.shape[0], data_gen_val.nb_frames_1s())
-            gt_blocks_dict = segment_labels(gt_dict, sed_gt.shape[0], data_gen_val.nb_frames_1s())
+            pred_blocks_dict = feat_cls.segment_labels(pred_dict, sed_pred.shape[0])
+            gt_blocks_dict = feat_cls.segment_labels(gt_dict, sed_gt.shape[0])
 
             cls_new_metric.update_seld_scores_xyz(pred_blocks_dict, gt_blocks_dict)
             new_metric[epoch_cnt, :] = cls_new_metric.compute_seld_scores()
-            new_seld_metric[epoch_cnt] = evaluation_metrics.compute_seld_metric(new_metric[epoch_cnt, :2], new_metric[epoch_cnt, 2:])
+            new_seld_metric[epoch_cnt] = evaluation_metrics.early_stopping_metric(new_metric[epoch_cnt, :2], new_metric[epoch_cnt, 2:])
 
             # Visualize the metrics with respect to epochs
             plot_functions(unique_name, tr_loss, sed_metric, doa_metric, seld_metric, new_metric, new_seld_metric)
@@ -337,8 +295,7 @@ def main(argv):
             for file_cnt in range(test_sed_pred.shape[0]//frames_per_file):
                 output_file = os.path.join(dcase_dump_folder, test_filelist[file_cnt].replace('.npy', '.csv'))
                 dc = file_cnt * frames_per_file
-                output_dict = evaluation_metrics.regression_label_format_to_output_format(
-                    data_gen_test,
+                output_dict = feat_cls.regression_label_format_to_output_format(
                     test_sed_pred[dc:dc + max_frames_with_content, :],
                     test_doa_pred[dc:dc + max_frames_with_content, :]
                 )
@@ -352,23 +309,23 @@ def main(argv):
 
             test_sed_loss = evaluation_metrics.compute_sed_scores(test_sed_pred, test_sed_gt, data_gen_test.nb_frames_1s())
             test_doa_loss = evaluation_metrics.compute_doa_scores_regr_xyz(test_doa_pred, test_doa_gt, test_sed_pred, test_sed_gt)
-            test_metric_loss = evaluation_metrics.compute_seld_metric(test_sed_loss, test_doa_loss)
+            test_metric_loss = evaluation_metrics.early_stopping_metric(test_sed_loss, test_doa_loss)
 
             # new SELD scores
             cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_test.get_nb_classes(), doa_threshold=20)
-            test_pred_dict = evaluation_metrics.regression_label_format_to_output_format(
-                data_gen_test, test_sed_pred, test_doa_pred
+            test_pred_dict = feat_cls.regression_label_format_to_output_format(
+                test_sed_pred, test_doa_pred
             )
-            test_gt_dict = evaluation_metrics.regression_label_format_to_output_format(
-                data_gen_test, test_sed_gt, test_doa_gt
+            test_gt_dict = feat_cls.regression_label_format_to_output_format(
+                test_sed_gt, test_doa_gt
             )
 
-            test_pred_blocks_dict = segment_labels(test_pred_dict, test_sed_pred.shape[0], data_gen_test.nb_frames_1s())
-            test_gt_blocks_dict = segment_labels(test_gt_dict, test_sed_gt.shape[0], data_gen_test.nb_frames_1s())
+            test_pred_blocks_dict = feat_cls.segment_labels(test_pred_dict, test_sed_pred.shape[0])
+            test_gt_blocks_dict = feat_cls.segment_labels(test_gt_dict, test_sed_gt.shape[0])
 
             cls_new_metric.update_seld_scores_xyz(test_pred_blocks_dict, test_gt_blocks_dict)
             test_new_metric = cls_new_metric.compute_seld_scores()
-            test_new_seld_metric = evaluation_metrics.compute_seld_metric(test_new_metric[:2], test_new_metric[2:])
+            test_new_seld_metric = evaluation_metrics.early_stopping_metric(test_new_metric[:2], test_new_metric[2:])
 
             avg_scores_test.append([test_new_metric[0], test_new_metric[1], test_new_metric[2], test_new_metric[3], test_new_seld_metric])
             print('Results on test split:')

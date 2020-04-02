@@ -67,10 +67,6 @@ class FeatureClass:
         # quick fix to overcome that. We need this because, for processing and training we need the length of features
         # to be fixed.
 
-        # For regression task only
-        self._default_azi = 180
-        self._default_ele = 90
-
         self._max_feat_frames = int(np.ceil(self._audio_max_len_samples / float(self._hop_len)))
         self._max_label_frames = int(np.ceil(self._audio_max_len_samples / float(self._label_hop_len)))
 
@@ -159,17 +155,19 @@ class FeatureClass:
         """
 
         se_label = np.zeros((self._max_label_frames, len(self._unique_classes)))
-        azi_label = self._default_azi*np.ones((self._max_label_frames, len(self._unique_classes)))
-        ele_label = self._default_ele*np.ones((self._max_label_frames, len(self._unique_classes)))
+        x_label = np.zeros((self._max_label_frames, len(self._unique_classes)))
+        y_label = np.zeros((self._max_label_frames, len(self._unique_classes)))
+        z_label = np.zeros((self._max_label_frames, len(self._unique_classes)))
 
         for frame_ind, active_event_list in _desc_file.items():
             if frame_ind < self._max_label_frames:
                 for active_event in active_event_list:
-                    se_label[frame_ind, active_event[0]-1] = 1
-                    azi_label[frame_ind, active_event[0]-1] = active_event[1]
-                    ele_label[frame_ind, active_event[0]-1] = active_event[2]
+                    se_label[frame_ind, active_event[0]] = 1
+                    x_label[frame_ind, active_event[0]] = active_event[1]
+                    y_label[frame_ind, active_event[0]] = active_event[2]
+                    z_label[frame_ind, active_event[0]] = active_event[3]
 
-        label_mat = np.concatenate((se_label, azi_label, ele_label), axis=1)
+        label_mat = np.concatenate((se_label, x_label, y_label, z_label), axis=1)
         return label_mat
 
     # ------------------------------- EXTRACT FEATURE AND PREPROCESS IT -------------------------------
@@ -266,7 +264,8 @@ class FeatureClass:
 
         for file_cnt, file_name in enumerate(os.listdir(self._desc_dir)):
             wav_filename = '{}.wav'.format(file_name.split('.')[0])
-            desc_file = self.load_output_format_file(os.path.join(self._desc_dir, file_name))
+            desc_file_polar = self.load_output_format_file(os.path.join(self._desc_dir, file_name))
+            desc_file = self.convert_output_format_polar_to_cartesian_(desc_file_polar)
             label_mat = self.get_labels_for_file(desc_file)
             print('{}: {}, {}'.format(file_cnt, file_name, label_mat.shape))
             np.save(os.path.join(self._label_dir, '{}.npy'.format(wav_filename.split('.')[0])), label_mat)
@@ -312,6 +311,98 @@ class FeatureClass:
                     _fid.write('{},{},{},{},{}\n'.format(int(_frame_ind), int(_value[0]), float(_value[1]), float(_value[2]), float(_value[3])))
         _fid.close()
 
+    def segment_labels(self, _pred_dict, _max_frames):
+        '''
+            Collects class-wise sound event location information in segments of length _frames_seg from reference dataset
+        :param _pred_dict: Dictionary containing frame-wise sound event time and location information. Output of SELD method
+        :param _max_frames: Total number of frames in the recording
+        :return: Dictionary containing class-wise sound event location information in each segment of audio
+                dictionary_name[segment-index][class-index] = list(frame-cnt-within-segment, azimuth, elevation)
+        '''
+        nb_blocks = int(np.ceil(_max_frames/float(self._nb_label_frames_1s)))
+        output_dict = {x: {} for x in range(nb_blocks)}
+        for frame_cnt in range(0, _max_frames, self._nb_label_frames_1s):
+
+            # Collect class-wise information for each block
+            # [class][frame] = <list of doa values>
+            # Data structure supports multi-instance occurence of same class
+            block_cnt = frame_cnt // self._nb_label_frames_1s
+            loc_dict = {}
+            for audio_frame in range(frame_cnt, frame_cnt+self._nb_label_frames_1s):
+                if audio_frame not in _pred_dict:
+                    continue
+                for value in _pred_dict[audio_frame]:
+                    if value[0] not in loc_dict:
+                        loc_dict[value[0]] = {}
+
+                    block_frame = audio_frame - frame_cnt
+                    if block_frame not in loc_dict[value[0]]:
+                        loc_dict[value[0]][block_frame] = []
+                    loc_dict[value[0]][block_frame].append(value[1:])
+
+            # Update the block wise details collected above in a global structure
+            for class_cnt in loc_dict:
+                if class_cnt not in output_dict[block_cnt]:
+                    output_dict[block_cnt][class_cnt] = []
+
+                keys = [k for k in loc_dict[class_cnt]]
+                values = [loc_dict[class_cnt][k] for k in loc_dict[class_cnt]]
+
+                output_dict[block_cnt][class_cnt].append([keys, values])
+
+        return output_dict
+
+    def regression_label_format_to_output_format(self, _sed_labels, _doa_labels):
+        """
+        Converts the sed (classification) and doa labels predicted in regression format to dcase output format.
+
+        :param _sed_labels: SED labels matrix [nb_frames, nb_classes]
+        :param _doa_labels: DOA labels matrix [nb_frames, 2*nb_classes] or [nb_frames, 2*nb_classes]
+        :return: _output_dict: returns a dict containing dcase output format
+        """
+
+        _nb_classes = len(self._unique_classes)
+        _is_polar = _doa_labels.shape[-1] == 2*_nb_classes
+        _azi_labels, _ele_labels = None, None
+        _x, _y, _z = None, None, None
+        if _is_polar:
+            _azi_labels = _doa_labels[:, :_nb_classes]
+            _ele_labels = _doa_labels[:, _nb_classes:]
+        else:
+            _x = _doa_labels[:, :_nb_classes]
+            _y = _doa_labels[:, _nb_classes:2*_nb_classes]
+            _z = _doa_labels[:, 2*_nb_classes:]
+
+        _output_dict = {}
+        for _frame_ind in range(_sed_labels.shape[0]):
+            _tmp_ind = np.where(_sed_labels[_frame_ind, :])
+            if len(_tmp_ind[0]):
+                _output_dict[_frame_ind] = []
+                for _tmp_class in _tmp_ind[0]:
+                    if _is_polar:
+                        _output_dict[_frame_ind].append([_tmp_class, _azi_labels[_frame_ind, _tmp_class], _ele_labels[_frame_ind, _tmp_class]])
+                    else:
+                        _output_dict[_frame_ind].append([_tmp_class, _x[_frame_ind, _tmp_class], _y[_frame_ind, _tmp_class], _z[_frame_ind, _tmp_class]])
+        return _output_dict
+
+    def convert_output_format_polar_to_cartesian_(self, in_dict):
+        out_dict = {}
+        for frame_cnt in in_dict.keys():
+            if frame_cnt not in out_dict:
+                out_dict[frame_cnt] = []
+                for tmp_val in in_dict[frame_cnt]:
+
+                    ele_rad = tmp_val[2]*np.pi/180.
+                    azi_rad = tmp_val[1]*np.pi/180
+
+                    tmp_label = np.cos(ele_rad)
+                    x = np.cos(azi_rad) * tmp_label
+                    y = np.sin(azi_rad) * tmp_label
+                    z = np.sin(ele_rad)
+                    out_dict[frame_cnt].append([tmp_val[0]-1, x, y, z])
+
+        return out_dict
+
     # ------------------------------- Misc public functions -------------------------------
     def get_classes(self):
         return self._unique_classes
@@ -342,20 +433,17 @@ class FeatureClass:
             '{}_wts'.format(self._dataset)
         )
 
-    def get_default_azi_ele_regr(self):
-        return self._default_azi, self._default_ele
-
     def get_nb_channels(self):
         return self._nb_channels
+
+    def get_nb_classes(self):
+        return len(self._unique_classes)
 
     def nb_frames_1s(self):
         return self._nb_label_frames_1s
 
     def get_hop_len_sec(self):
         return self._hop_len_s
-
-    def get_azi_ele_list(self):
-        return self._azi_list, self._ele_list
 
     def get_nb_frames(self):
         return self._max_label_frames

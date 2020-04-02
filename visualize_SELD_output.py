@@ -5,17 +5,14 @@
 import os
 import numpy as np
 import librosa.display
-import sys
-sys.path.append(os.path.join(sys.path[0], '..'))
-from metrics import evaluation_metrics
 import cls_feature_class
 import parameter
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plot
 #plot.switch_backend('Qt4Agg')
 plot.switch_backend('agg')
-
 from IPython import embed
+
 
 def collect_classwise_data(_in_dict):
     _out_dict = {}
@@ -23,16 +20,7 @@ def collect_classwise_data(_in_dict):
         for _seld in _in_dict[_key]:
             if _seld[0] not in _out_dict:
                 _out_dict[_seld[0]] = []
-            if len(_seld) == 3:
-                ele_rad = _seld[2]*np.pi/180.
-                azi_rad = _seld[1]*np.pi/180
-                tmp_label = np.cos(ele_rad)
-                x = np.cos(azi_rad) * tmp_label
-                y = np.sin(azi_rad) * tmp_label
-                z = np.sin(ele_rad)
-                _out_dict[_seld[0]].append([_key, _seld[0], x, y, z])
-            else:
-                _out_dict[_seld[0]].append([_key, _seld[0], _seld[1], _seld[2], _seld[3]])
+            _out_dict[_seld[0]].append([_key, _seld[0], _seld[1], _seld[2], _seld[3]])
     return _out_dict
 
 
@@ -70,8 +58,8 @@ pred_dict = feat_cls.load_output_format_file(pred)
 
 # load the reference output format
 ref_filename = os.path.basename(pred)
-ref_dict = feat_cls.load_output_format_file(os.path.join(ref_dir, ref_filename))
-
+ref_dict_polar = feat_cls.load_output_format_file(os.path.join(ref_dir, ref_filename))
+ref_dict = feat_cls.convert_output_format_polar_to_cartesian_(ref_dict_polar)
 
 pred_data = collect_classwise_data(pred_dict)
 ref_data = collect_classwise_data(ref_dict)
@@ -97,5 +85,5 @@ ax7 = plot.subplot(gs[4, :2]), plot_func(ref_data, params['label_hop_len_s'], in
 ax8 = plot.subplot(gs[4, 2:]), plot_func(pred_data, params['label_hop_len_s'], ind=4, plot_x_ax=True), plot.ylim([-1, 1]), plot.title('z-axis DOA predicted')
 ax_lst = [ax0, ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8]
 #plot.show()
-plot.savefig(os.path.join('../images/', ref_filename.replace('.wav', '.jpg')), dpi=300)
+plot.savefig(os.path.join('images/', ref_filename.replace('.wav', '.jpg')), dpi=300)
 

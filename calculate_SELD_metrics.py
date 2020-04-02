@@ -1,11 +1,12 @@
 import os
-from metrics import evaluation_metrics
+from metrics import SELD_evaluation_metrics
 import cls_feature_class
+import parameter
 import numpy as np
 
 
 def get_nb_files(_pred_file_list, _group='split'):
-    _group_ind = {'ir': 4, 'ov': 16}
+    _group_ind = {'ir': 4, 'ov': 21}
     _cnt_dict = {}
     for _filename in _pred_file_list:
 
@@ -26,15 +27,12 @@ def get_nb_files(_pred_file_list, _group='split'):
 # Metric evaluation at a fixed hop length of 20 ms (=0.02 seconds) and 3000 frames for a 60s audio
 
 # INPUT DIRECTORY
-ref_desc_files = '/scratch/asignal/sharath/DCASE2020_SELD_dataset/metadata_eval/' # reference description directory location
-pred_output_format_files = '/users/sadavann/seld-dcase2020/results/4_mic_eval' # predicted output format directory location
+ref_desc_files = '/home/sharath/Downloads/SELD_2020_dataset/metadata_eval' # reference description directory location
+pred_output_format_files = '/home/sharath/Downloads/SELD_2020_dataset/5_foa_eval' # predicted output format directory location
 
 # Load feature class
-feat_cls = cls_feature_class.FeatureClass()
-max_frames = feat_cls.get_nb_frames()
-unique_classes = feat_cls.get_classes()
-nb_classes = len(unique_classes)
-azi_list, ele_list = feat_cls.get_azi_ele_list()
+params = parameter.get_params()
+feat_cls = cls_feature_class.FeatureClass(params)
 
 # collect reference files info
 ref_files = os.listdir(ref_desc_files)
@@ -48,12 +46,9 @@ if nb_ref_files != nb_pred_files:
     print('ERROR: Mismatch. Reference has {} and prediction has {} files'.format(nb_ref_files, nb_pred_files))
     exit()
 
-# Load evaluation metric class
-eval = evaluation_metrics.SELDMetrics(nb_frames_1s=feat_cls.nb_frames_1s(), data_gen=feat_cls)
-
 # Calculate scores for different splits, overlapping sound events, and impulse responses (reverberant scenes)
-score_type_list = [ 'all', 'split', 'ov', 'ir']
-
+score_type_list = ['all', 'ov', 'ir']
+print('Number of predicted files: {}\nNumber of reference files: {}'.format(nb_pred_files, nb_ref_files))
 print('\nCalculating {} scores for {}'.format(score_type_list, os.path.basename(pred_output_format_files)))
 
 for score_type in score_type_list:
@@ -62,32 +57,29 @@ for score_type in score_type_list:
     print('---------------------------------------------------------------------------------------------------')
 
     split_cnt_dict = get_nb_files(pred_files, _group=score_type) # collect files corresponding to score_type
-
     # Calculate scores across files for a given score_type
     for split_key in np.sort(list(split_cnt_dict)):
-        eval.reset()    # Reset the evaluation metric parameters
+        # Load evaluation metric class
+        eval = SELD_evaluation_metrics.SELDMetrics(nb_classes=feat_cls.get_nb_classes(), doa_threshold=20)
         for pred_cnt, pred_file in enumerate(split_cnt_dict[split_key]):
             # Load predicted output format file
-            pred_dict = evaluation_metrics.load_output_format_file(os.path.join(pred_output_format_files, pred_file))
+            pred_dict = feat_cls.load_output_format_file(os.path.join(pred_output_format_files, pred_file))
+            pred_labels = feat_cls.segment_labels(pred_dict, feat_cls.get_nb_frames())
 
             # Load reference description file
-            gt_desc_file_dict = feat_cls.read_desc_file(os.path.join(ref_desc_files, pred_file.replace('.npy', '.csv')))
+            gt_dict_polar = feat_cls.load_output_format_file(os.path.join(ref_desc_files, pred_file.replace('.npy', '.csv')))
+            gt_dict = feat_cls.convert_output_format_polar_to_cartesian_(gt_dict_polar)
+            gt_labels = feat_cls.segment_labels(gt_dict, feat_cls.get_nb_frames())
 
-            # Generate classification labels for SELD
-            gt_labels = feat_cls.get_clas_labels_for_file(gt_desc_file_dict)
-            pred_labels = evaluation_metrics.output_format_dict_to_classification_labels(pred_dict, feat_cls)
-
-            # Calculated SED and DOA scores
-            eval.update_sed_scores(pred_labels.max(2), gt_labels.max(2))
-            eval.update_doa_scores(pred_labels, gt_labels)
+            # Calculated scores
+            eval.update_seld_scores_xyz(pred_labels, gt_labels)
 
         # Overall SED and DOA scores
-        er, f = eval.compute_sed_scores()
-        doa_err, frame_recall = eval.compute_doa_scores()
-        seld_scr = evaluation_metrics.compute_seld_metric([er, f], [doa_err, frame_recall])
+        er, f, de, de_f = eval.compute_seld_scores()
+        seld_scr = SELD_evaluation_metrics.early_stopping_metric([er, f], [de, de_f])
 
         print('\nAverage score for {} {} data'.format(score_type, 'fold' if score_type=='all' else split_key))
-        print('SELD score: {}'.format(seld_scr))
-        print('SED metrics: er: {}, f:{}'.format(er, f))
-        print('DOA metrics: doa error: {}, frame recall:{}'.format(doa_err, frame_recall))
+        print('SELD score (early stopping metric): {:0.2f}'.format(seld_scr))
+        print('SED metrics: Error rate: {:0.2f}, F-score:{:0.1f}'.format(er, 100*f))
+        print('DOA metrics: DOA error: {:0.1f}, F-score:{:0.1f}'.format(de, 100*de_f))
 

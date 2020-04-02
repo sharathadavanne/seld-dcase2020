@@ -32,8 +32,7 @@ class DataGenerator(object):
         self._label_len = None  # total length of label - DOA + SED
         self._doa_len = None    # DOA label length
         self._class_dict = self._feat_cls.get_classes()
-        self._nb_classes = len(self._class_dict.keys())
-        self._default_azi, self._default_ele = self._feat_cls.get_default_azi_ele_regr()
+        self._nb_classes = self._feat_cls.get_nb_classes()
         self._get_filenames_list_and_feat_label_sizes()
 
         self._feature_batch_seq_len = self._batch_size*self._feature_seq_len
@@ -172,8 +171,6 @@ class DataGenerator(object):
 
                             label_extra_frames = self._label_batch_seq_len - temp_label.shape[0]
                             extra_labels = np.zeros((label_extra_frames, temp_label.shape[1]))
-                            extra_labels[:, self._nb_classes:2 * self._nb_classes] = self._default_azi
-                            extra_labels[:, 2 * self._nb_classes:] = self._default_ele
 
                             for f_row in extra_feat:
                                 self._circ_buf_feat.append(f_row)
@@ -196,24 +193,9 @@ class DataGenerator(object):
                     feat = np.transpose(feat, (0, 3, 1, 2))
                     label = self._split_in_seqs(label, self._label_seq_len)
 
-                    # Get azi/ele in radians
-                    azi_rad = label[:, :, self._nb_classes:2 * self._nb_classes] * np.pi / 180
-                    ele_rad = label[:, :, 2 * self._nb_classes:] * np.pi / 180
-                    tmp_label = np.cos(ele_rad)
-
-                    x = np.cos(azi_rad) * tmp_label
-                    y = np.sin(azi_rad) * tmp_label
-                    z = np.sin(ele_rad)
-
-                    # Set default Cartesian x,y,z coordinates to 0,0,0
-                    no_ele_ind = np.where(label[:, :, 2 * self._nb_classes:] == self._default_ele)
-                    x[no_ele_ind] = 0
-                    z[no_ele_ind] = 0
-                    y[no_ele_ind] = 0
-
                     label = [
                         label[:, :, :self._nb_classes],  # SED labels
-                        np.concatenate((label[:, :, :self._nb_classes], x, y, z), -1)  # DOA labels
+                        label # SED + DOA labels
                          ]
                     yield feat, label
 

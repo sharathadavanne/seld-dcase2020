@@ -241,3 +241,19 @@ def distance_between_cartesian_coordinates(x1, y1, z1, x2, y2, z2):
     dist = 2 * np.arcsin(dist / 2.0) * 180/np.pi
     return dist
 
+
+def early_stopping_metric(sed_error, doa_error):
+    """
+    Compute early stopping metric from sed and doa errors.
+
+    :param sed_error: [error rate (0 to 1 range), f score (0 to 1 range)]
+    :param doa_error: [doa error (in degrees), frame recall (0 to 1 range)]
+    :return: early stopping metric result
+    """
+    seld_metric = np.mean([
+        sed_error[0],
+        1 - sed_error[1],
+        doa_error[0]/180,
+        1 - doa_error[1]]
+        )
+    return seld_metric

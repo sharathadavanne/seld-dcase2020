@@ -566,9 +566,9 @@ def cart2sph(x, y, z):
 ###############################################################
 
 
-def compute_seld_metric(sed_error, doa_error):
+def early_stopping_metric(sed_error, doa_error):
     """
-    Compute SELD metric from sed and doa errors.
+    Compute early stopping metric from sed and doa errors.
 
     :param sed_error: [error rate (0 to 1 range), f score (0 to 1 range)]
     :param doa_error: [doa error (in degrees), frame recall (0 to 1 range)]
@@ -583,132 +583,5 @@ def compute_seld_metric(sed_error, doa_error):
     return seld_metric
 
 
-# def compute_seld_metrics_from_output_format_dict(_pred_dict, _gt_dict, _feat_cls):
-#     """
-#         Compute SELD metrics between _gt_dict and_pred_dict in DCASE output format
-#
-#     :param _pred_dict: dcase output format dict
-#     :param _gt_dict: dcase output format dict
-#     :param _feat_cls: feature or data generator class
-#     :return: the seld metrics
-#     """
-#     _gt_labels = output_format_dict_to_classification_labels(_gt_dict, _feat_cls)
-#     _pred_labels = output_format_dict_to_classification_labels(_pred_dict, _feat_cls)
-#
-#     _er, _f = compute_sed_scores(_pred_labels.max(2), _gt_labels.max(2), _feat_cls.nb_frames_1s())
-#     _doa_err, _frame_recall, d1, d2, d3, d4 = compute_doa_scores_clas(_pred_labels, _gt_labels, _feat_cls)
-#     _seld_scr = compute_seld_metric([_er, _f], [_doa_err, _frame_recall])
-#     return _seld_scr, _er, _f, _doa_err, _frame_recall
 
-
-###############################################################
-# Functions for format conversions
-###############################################################
-
-# def output_format_dict_to_classification_labels(_output_dict, _feat_cls):
-#
-#     _unique_classes = _feat_cls.get_classes()
-#     _nb_classes = len(_unique_classes)
-#     _azi_list, _ele_list = _feat_cls.get_azi_ele_list()
-#     _max_frames = _feat_cls.get_nb_frames()
-#     _labels = np.zeros((_max_frames, _nb_classes, len(_azi_list) * len(_ele_list)))
-#
-#     for _frame_cnt in _output_dict.keys():
-#         if _frame_cnt < _max_frames:
-#             for _tmp_doa in _output_dict[_frame_cnt]:
-#                 # Making sure the doa's are within the limits
-#                 _tmp_doa[1] = np.clip(_tmp_doa[1], _azi_list[0], _azi_list[-1])
-#                 _tmp_doa[2] = np.clip(_tmp_doa[2], _ele_list[0], _ele_list[-1])
-#
-#                 # create label
-#                 _labels[_frame_cnt, _tmp_doa[0], int(_feat_cls.get_list_index(_tmp_doa[1], _tmp_doa[2]))] = 1
-#
-#     return _labels
-
-
-def regression_label_format_to_output_format(_feat_cls, _sed_labels, _doa_labels):
-    """
-    Converts the sed (classification) and doa labels predicted in regression format to dcase output format.
-
-    :param _feat_cls: feature or data generator class instance
-    :param _sed_labels: SED labels matrix [nb_frames, nb_classes]
-    :param _doa_labels: DOA labels matrix [nb_frames, 2*nb_classes] or [nb_frames, 2*nb_classes]
-    :return: _output_dict: returns a dict containing dcase output format
-    """
-
-    _unique_classes = _feat_cls.get_classes()
-    _nb_classes = len(_unique_classes)
-    _is_polar = _doa_labels.shape[-1] == 2*_nb_classes
-    _azi_labels, _ele_labels = None, None
-    _x, _y, _z = None, None, None
-    if _is_polar:
-        _azi_labels = _doa_labels[:, :_nb_classes]
-        _ele_labels = _doa_labels[:, _nb_classes:]
-    else:
-        _x = _doa_labels[:, :_nb_classes]
-        _y = _doa_labels[:, _nb_classes:2*_nb_classes]
-        _z = _doa_labels[:, 2*_nb_classes:]
-
-    _output_dict = {}
-    for _frame_ind in range(_sed_labels.shape[0]):
-        _tmp_ind = np.where(_sed_labels[_frame_ind, :])
-        if len(_tmp_ind[0]):
-            _output_dict[_frame_ind] = []
-            for _tmp_class in _tmp_ind[0]:
-                if _is_polar:
-                    _output_dict[_frame_ind].append([_tmp_class, _azi_labels[_frame_ind, _tmp_class], _ele_labels[_frame_ind, _tmp_class]])
-                else:
-                    _output_dict[_frame_ind].append([_tmp_class, _x[_frame_ind, _tmp_class], _y[_frame_ind, _tmp_class], _z[_frame_ind, _tmp_class]])
-    return _output_dict
-
-
-# def classification_label_format_to_output_format(_feat_cls, _labels):
-#     """
-#     Converts the seld labels predicted in classification format to dcase output format.
-#
-#     :param _feat_cls: feature or data generator class instance
-#     :param _labels: SED labels matrix [nb_frames, nb_classes, nb_azi*nb_ele]
-#     :return: _output_dict: returns a dict containing dcase output format
-#     """
-#     _output_dict = {}
-#     for _frame_ind in range(_labels.shape[0]):
-#         _tmp_class_ind = np.where(_labels[_frame_ind].sum(1))
-#         if len(_tmp_class_ind[0]):
-#             _output_dict[_frame_ind] = []
-#             for _tmp_class in _tmp_class_ind[0]:
-#                 _tmp_spatial_ind = np.where(_labels[_frame_ind, _tmp_class])
-#                 for _tmp_spatial in _tmp_spatial_ind[0]:
-#                     _azi, _ele = _feat_cls.get_matrix_index(_tmp_spatial)
-#                     _output_dict[_frame_ind].append([_tmp_class, _azi, _ele])
-#
-#     return _output_dict
-
-
-def description_file_to_output_format(_desc_file_dict, _unique_classes, _hop_length_sec):
-    """
-    Reads description file in csv format. Outputs, the dcase format results in dictionary, and additionally writes it
-    to the _output_file
-
-    :param _unique_classes: unique classes dictionary, maps class name to class index
-    :param _desc_file_dict: full path of the description file
-    :param _hop_length_sec: hop length in seconds
-
-    :return: _output_dict: dcase output in dicitionary format
-    """
-
-    _output_dict = {}
-    for _ind, _tmp_start_sec in enumerate(_desc_file_dict['start']):
-        _tmp_class = _unique_classes[_desc_file_dict['class'][_ind]]
-        _tmp_azi = _desc_file_dict['azi'][_ind]
-        _tmp_ele = _desc_file_dict['ele'][_ind]
-        _tmp_end_sec = _desc_file_dict['end'][_ind]
-
-        _start_frame = int(_tmp_start_sec / _hop_length_sec)
-        _end_frame = int(_tmp_end_sec / _hop_length_sec)
-        for _frame_ind in range(_start_frame, _end_frame + 1):
-            if _frame_ind not in _output_dict:
-                _output_dict[_frame_ind] = []
-            _output_dict[_frame_ind].append([_tmp_class, _tmp_azi, _tmp_ele])
-
-    return _output_dict
 
