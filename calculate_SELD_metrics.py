@@ -5,7 +5,7 @@ import numpy as np
 
 
 def get_nb_files(_pred_file_list, _group='split'):
-    _group_ind = {'split': 5, 'ir': 9, 'ov': 13}
+    _group_ind = {'ir': 4, 'ov': 16}
     _cnt_dict = {}
     for _filename in _pred_file_list:
 
@@ -26,8 +26,8 @@ def get_nb_files(_pred_file_list, _group='split'):
 # Metric evaluation at a fixed hop length of 20 ms (=0.02 seconds) and 3000 frames for a 60s audio
 
 # INPUT DIRECTORY
-ref_desc_files = '/home/adavanne/taitoSharedData/DCASE2019/dataset/metadata_dev' # reference description directory location
-pred_output_format_files = '/home/adavanne/taitoWorkDir/SELD_DCASE2019/results/2_mic_dev' # predicted output format directory location
+ref_desc_files = '/scratch/asignal/sharath/DCASE2020_SELD_dataset/metadata_eval/' # reference description directory location
+pred_output_format_files = '/users/sadavann/seld-dcase2020/results/4_mic_eval' # predicted output format directory location
 
 # Load feature class
 feat_cls = cls_feature_class.FeatureClass()

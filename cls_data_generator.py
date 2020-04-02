@@ -12,10 +12,10 @@ import random
 
 class DataGenerator(object):
     def __init__(
-            self, params, split=1, shuffle=True, per_file=False
+            self, params, split=1, shuffle=True, per_file=False, is_eval=False
     ):
         self._per_file = per_file
-        self._is_eval = True if params['mode'] is 'eval' else False
+        self._is_eval = is_eval
         self._splits = np.array(split)
         self._batch_size = params['batch_size']
         self._feature_seq_len = params['feature_sequence_length']

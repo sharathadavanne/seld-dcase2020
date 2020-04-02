@@ -157,14 +157,14 @@ def main(argv):
 
         # SUGGESTION: Considering the long training time, major tuning of the method can be done on the first split.
         # Once you finlaize the method you can evaluate its performance on the complete cross-validation splits
-        test_splits = [2]
+        test_splits = [1]
         val_splits = [2]
-        train_splits = [[1, 2]]
+        train_splits = [[3, 4, 5, 6]]
 
     elif params['mode'] == 'eval':
-        test_splits = [0]
-        val_splits = [1]
-        train_splits = [[2, 3, 4]]
+        test_splits = [[7, 8]]
+        val_splits = [[1, 2]]
+        train_splits = [[3, 4, 5, 6]]
 
     avg_scores_val = []
     avg_scores_test = []
@@ -306,7 +306,7 @@ def main(argv):
         # ------------------  Calculate metric scores for unseen test split ---------------------------------
         print('Loading testing dataset:')
         data_gen_test = cls_data_generator.DataGenerator(
-            params=params, split=split, shuffle=False
+            params=params, split=split, shuffle=False, per_file=params['dcase_output'], is_eval=True if params['mode'] is 'eval' else False
         )
 
         print('\nLoading the best model and predicting results on the testing split')

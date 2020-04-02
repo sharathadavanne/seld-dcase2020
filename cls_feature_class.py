@@ -163,7 +163,7 @@ class FeatureClass:
         ele_label = self._default_ele*np.ones((self._max_label_frames, len(self._unique_classes)))
 
         for frame_ind, active_event_list in _desc_file.items():
-            if frame_ind < self._max_feat_frames:
+            if frame_ind < self._max_label_frames:
                 for active_event in active_event_list:
                     se_label[frame_ind, active_event[0]-1] = 1
                     azi_label[frame_ind, active_event[0]-1] = active_event[1]
@@ -309,7 +309,7 @@ class FeatureClass:
                 if len(_value)==3:
                     _fid.write('{},{},{},{}\n'.format(int(_frame_ind), int(_value[0]), int(_value[1]), int(_value[2])))
                 else:
-                    _fid.write('{},{},{},{}\n'.format(int(_frame_ind), int(_value[0]), float(_value[1]), float(_value[2]), float(_value[3])))
+                    _fid.write('{},{},{},{},{}\n'.format(int(_frame_ind), int(_value[0]), float(_value[1]), float(_value[2]), float(_value[3])))
         _fid.close()
 
     # ------------------------------- Misc public functions -------------------------------
