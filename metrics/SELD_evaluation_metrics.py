@@ -12,6 +12,7 @@
 import numpy as np
 from IPython import  embed
 eps = np.finfo(np.float).eps
+from scipy.optimize import linear_sum_assignment
 
 
 class SELDMetrics(object):
@@ -91,13 +92,8 @@ class SELDMetrics(object):
                     # True positives or False negative case
 
                     # NOTE: For multiple tracks per class, identify multiple tracks using hungarian algorithm and then
-                    # calculate the spatial distance using the following code. In the current code, we are assuming only
-                    # one track per class.
-                    gt_list = np.squeeze(np.array(gt[block_cnt][class_cnt][0][1]), 1)
-                    gt_x, gt_y, gt_z = gt_list[:, 0], gt_list[:, 1], gt_list[:, 2]
-
-                    pred_list = np.squeeze(np.array(pred[block_cnt][class_cnt][0][1]), 1)
-                    pred_x, pred_y, pred_z = pred_list[:, 0], pred_list[:, 1], pred_list[:, 2]
+                    # calculate the spatial distance using the following code. In the current code, if there are multiple 
+                    # tracks of the same class in a frame we are calculating the least cost between the groundtruth and predicted and using it.
 
                     total_spatial_dist = 0
                     total_framewise_matching_doa = 0
@@ -107,7 +103,14 @@ class SELDMetrics(object):
                         if gt_val in pred_ind_list:
                             total_framewise_matching_doa += 1
                             pred_ind = pred_ind_list.index(gt_val)
-                            total_spatial_dist += distance_between_cartesian_coordinates(gt_x[gt_ind], gt_y[gt_ind], gt_z[gt_ind], pred_x[pred_ind], pred_y[pred_ind], pred_z[pred_ind])
+
+                            gt_arr = np.array(gt[block_cnt][class_cnt][0][1][gt_ind])
+                            pred_arr = np.array(pred[block_cnt][class_cnt][0][1][pred_ind])
+
+                            if gt_arr.shape[0]==1 and pred_arr.shape[0]==1:
+                                total_spatial_dist += distance_between_cartesian_coordinates(gt_arr[0][0], gt_arr[0][1], gt_arr[0][2], pred_arr[0][0], pred_arr[0][1], pred_arr[0][2])
+                            else:
+                                total_spatial_dist += least_distance_between_gt_pred(gt_arr, pred_arr)
 
                     if total_spatial_dist == 0 and total_framewise_matching_doa == 0:
                         loc_FN += 1
@@ -163,14 +166,8 @@ class SELDMetrics(object):
                     # True positives or False negative case
 
                     # NOTE: For multiple tracks per class, identify multiple tracks using hungarian algorithm and then
-                    # calculate the spatial distance using the following code. In the current code, we are assuming only
-                    # one track per class.
-                    gt_list = np.squeeze(np.array(gt_deg[block_cnt][class_cnt][0][1]), 1) * np.pi / 180
-                    gt_azi_list, gt_ele_list = gt_list[:, 0], gt_list[:, 1]
-
-                    pred_list = np.squeeze(np.array(pred_deg[block_cnt][class_cnt][0][1]), 1) * np.pi / 180
-                    pred_azi_list, pred_ele_list = pred_list[:, 0], pred_list[:, 1]
-
+                    # calculate the spatial distance using the following code. In the current code, if there are multiple 
+                    # tracks of the same class in a frame we are calculating the least cost between the groundtruth and predicted and using it.
                     total_spatial_dist = 0
                     total_framewise_matching_doa = 0
                     gt_ind_list = gt_deg[block_cnt][class_cnt][0][0]
@@ -179,7 +176,14 @@ class SELDMetrics(object):
                         if gt_val in pred_ind_list:
                             total_framewise_matching_doa += 1
                             pred_ind = pred_ind_list.index(gt_val)
-                            total_spatial_dist += distance_between_spherical_coordinates_rad(gt_azi_list[gt_ind], gt_ele_list[gt_ind], pred_azi_list[pred_ind], pred_ele_list[pred_ind])
+
+                            gt_arr = np.array(gt[block_cnt][class_cnt][0][1][gt_ind]) * np.pi / 180
+                            pred_arr = np.array(pred[block_cnt][class_cnt][0][1][pred_ind]) * np.pi / 180
+
+                            if gt_arr.shape[0]==1 and pred_arr.shape[0]==1:
+                                total_spatial_dist += distance_between_spherical_coordinates_rad(gt_arr[0][0], gt_arr[0][1], pred_arr[0][0], pred_arr[0][1])
+                            else:
+                                total_spatial_dist += least_distance_between_gt_pred(gt_arr, pred_arr)
 
                     if total_spatial_dist == 0 and total_framewise_matching_doa == 0:
                         loc_FN += 1
@@ -241,6 +245,35 @@ def distance_between_cartesian_coordinates(x1, y1, z1, x2, y2, z2):
     dist = 2 * np.arcsin(dist / 2.0) * 180/np.pi
     return dist
 
+def least_distance_between_gt_pred(gt_list, pred_list):
+    """
+        Shortest distance between two sets of DOA coordinates. Given a set of groundtruth coordinates,
+        and its respective predicted coordinates, we calculate the distance between each of the 
+        coordinate pairs resulting in a matrix of distances, where one axis represents the number of groundtruth
+        coordinates and the other the predicted coordinates. The number of estimated peaks need not be the same as in
+        groundtruth, thus the distance matrix is not always a square matrix. We use the hungarian algorithm to find the
+        least cost in this distance matrix.
+        :param gt_list_xyz: list of ground-truth Cartesian or Polar coordinates in Radians
+        :param pred_list_xyz: list of predicted Carteisan or Polar coordinates in Radians
+        :return: cost -  distance
+        :return: less - number of DOA's missed
+        :return: extra - number of DOA's over-estimated
+    """
+    gt_len, pred_len = gt_list.shape[0], pred_list.shape[0]
+    ind_pairs = np.array([[x, y] for y in range(pred_len) for x in range(gt_len)])
+    cost_mat = np.zeros((gt_len, pred_len))
+
+    if gt_len and pred_len:
+        if len(gt_list[0]) == 3: #Cartesian
+            x1, y1, z1, x2, y2, z2 = gt_list[ind_pairs[:, 0], 0], gt_list[ind_pairs[:, 0], 1], gt_list[ind_pairs[:, 0], 2], pred_list[ind_pairs[:, 1], 0], pred_list[ind_pairs[:, 1], 1], pred_list[ind_pairs[:, 1], 2]
+            cost_mat[ind_pairs[:, 0], ind_pairs[:, 1]] = distance_between_cartesian_coordinates(x1, y1, z1, x2, y2, z2)
+        else:
+            az1, ele1, az2, ele2 = gt_list[ind_pairs[:, 0], 0], gt_list[ind_pairs[:, 0], 1], pred_list[ind_pairs[:, 1], 0], pred_list[ind_pairs[:, 1], 1]
+            cost_mat[ind_pairs[:, 0], ind_pairs[:, 1]] = distance_between_spherical_coordinates_rad(az1, ele1, az2, ele2)
+
+    row_ind, col_ind = linear_sum_assignment(cost_mat)
+    cost = cost_mat[row_ind, col_ind].sum()
+    return cost
 
 def early_stopping_metric(sed_error, doa_error):
     """

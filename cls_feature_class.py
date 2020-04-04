@@ -22,7 +22,7 @@ class FeatureClass:
     def __init__(self, params, is_eval=False):
         """
 
-        :param dataset: string, dataset name, supported: foa - ambisonic or mic- microphone format
+        :param params: parameters dictionary
         :param is_eval: if True, does not load dataset labels.
         """
 
@@ -106,17 +106,17 @@ class FeatureClass:
         return mel_feat
 
     def _get_foa_intensity_vectors(self, linear_spectra):
-        I1 = np.real(np.conj(linear_spectra[:, :, 0]) * linear_spectra[:, :, 1])
-        I2 = np.real(np.conj(linear_spectra[:, :, 0]) * linear_spectra[:, :, 2])
-        I3 = np.real(np.conj(linear_spectra[:, :, 0]) * linear_spectra[:, :, 3])
+        IVx = np.real(np.conj(linear_spectra[:, :, 0]) * linear_spectra[:, :, 1])
+        IVy = np.real(np.conj(linear_spectra[:, :, 0]) * linear_spectra[:, :, 2])
+        IVz = np.real(np.conj(linear_spectra[:, :, 0]) * linear_spectra[:, :, 3])
 
-        normal = np.sqrt(I1**2 + I2**2 + I3**2) + self._eps
-        I1 = np.dot(I1 / normal, self._mel_wts)
-        I2 = np.dot(I2 / normal, self._mel_wts)
-        I3 = np.dot(I3 / normal, self._mel_wts)
+        normal = np.sqrt(IVx**2 + IVy**2 + IVz**2) + self._eps
+        IVx = np.dot(IVx / normal, self._mel_wts)
+        IVy = np.dot(IVy / normal, self._mel_wts)
+        IVz = np.dot(IVz / normal, self._mel_wts)
 
         # we are doing the following instead of simply concatenating to keep the processing similar to mel_spec and gcc
-        foa_iv = np.dstack((I1, I2, I3))
+        foa_iv = np.dstack((IVx, IVy, IVz))
         foa_iv = foa_iv.reshape((linear_spectra.shape[0], self._nb_mel_bins * 3))
         if np.isnan(foa_iv).any():
             print('Feature extraction is generating nan outputs')
@@ -144,14 +144,12 @@ class FeatureClass:
     # OUTPUT LABELS
     def get_labels_for_file(self, _desc_file):
         """
-        Reads description csv file and returns classification based SED labels and regression based DOA labels
+        Reads description file and returns classification based SED labels and regression based DOA labels
 
-        :param _desc_file: csv file
+        :param _desc_file: metadata description file
         :return: label_mat: labels of the format [sed_label, doa_label],
         where sed_label is of dimension [nb_frames, nb_classes] which is 1 for active sound event else zero
-        where doa_labels is of dimension [nb_frames, 2*nb_classes], nb_classes each for azimuth and elevation angles,
-        if active, the DOA values will be in degrees, else, it will contain default doa values given by
-        self._default_ele and self._default_azi
+        where doa_labels is of dimension [nb_frames, 3*nb_classes], nb_classes each for x, y, z axis,
         """
 
         se_label = np.zeros((self._max_label_frames, len(self._unique_classes)))
@@ -286,10 +284,10 @@ class FeatureClass:
             _frame_ind = int(_words[0])
             if _frame_ind not in _output_dict:
                 _output_dict[_frame_ind] = []
-            if len(_words) == 4:
-                _output_dict[_frame_ind].append([int(_words[1]), int(_words[2]), int(_words[3])])
-            else:
-                _output_dict[_frame_ind].append([int(_words[1]), float(_words[2]), float(_words[3]), float(_words[4])])
+            if len(_words) == 5: #read polar coordinates format, we ignore the track count 
+                _output_dict[_frame_ind].append([int(_words[1]), float(_words[3]), float(_words[4])])
+            elif len(_words) == 6: # read Cartesian coordinates format, we ignore the track count
+                _output_dict[_frame_ind].append([int(_words[1]), float(_words[3]), float(_words[4]), float(_words[5])])
         _fid.close()
         return _output_dict
 
@@ -305,15 +303,13 @@ class FeatureClass:
         # _fid.write('{},{},{},{}\n'.format('frame number with 20ms hop (int)', 'class index (int)', 'azimuth angle (int)', 'elevation angle (int)'))
         for _frame_ind in _output_format_dict.keys():
             for _value in _output_format_dict[_frame_ind]:
-                if len(_value)==3:
-                    _fid.write('{},{},{},{}\n'.format(int(_frame_ind), int(_value[0]), int(_value[1]), int(_value[2])))
-                else:
-                    _fid.write('{},{},{},{},{}\n'.format(int(_frame_ind), int(_value[0]), float(_value[1]), float(_value[2]), float(_value[3])))
+                # Write Cartesian format output. Since baseline does not estimate track count we use a fixed value.
+                _fid.write('{},{},{},{},{},{}\n'.format(int(_frame_ind), int(_value[0]), 0, float(_value[1]), float(_value[2]), float(_value[3])))
         _fid.close()
 
     def segment_labels(self, _pred_dict, _max_frames):
         '''
-            Collects class-wise sound event location information in segments of length _frames_seg from reference dataset
+            Collects class-wise sound event location information in segments of length 1s from reference dataset
         :param _pred_dict: Dictionary containing frame-wise sound event time and location information. Output of SELD method
         :param _max_frames: Total number of frames in the recording
         :return: Dictionary containing class-wise sound event location information in each segment of audio
@@ -357,7 +353,7 @@ class FeatureClass:
         Converts the sed (classification) and doa labels predicted in regression format to dcase output format.
 
         :param _sed_labels: SED labels matrix [nb_frames, nb_classes]
-        :param _doa_labels: DOA labels matrix [nb_frames, 2*nb_classes] or [nb_frames, 2*nb_classes]
+        :param _doa_labels: DOA labels matrix [nb_frames, 2*nb_classes] or [nb_frames, 3*nb_classes]
         :return: _output_dict: returns a dict containing dcase output format
         """
 
@@ -399,7 +395,7 @@ class FeatureClass:
                     x = np.cos(azi_rad) * tmp_label
                     y = np.sin(azi_rad) * tmp_label
                     z = np.sin(ele_rad)
-                    out_dict[frame_cnt].append([tmp_val[0]-1, x, y, z])
+                    out_dict[frame_cnt].append([tmp_val[0], x, y, z])
 
         return out_dict
 

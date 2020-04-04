@@ -1,5 +1,5 @@
 #
-# A wrapper script that trains the SELDnet. The training stops when the SELD error (check paper) stops improving.
+# A wrapper script that trains the SELDnet. The training stops when the early stopping metric - SELD error stops improving.
 #
 
 import os
@@ -108,21 +108,16 @@ def main(argv):
 
     feat_cls = cls_feature_class.FeatureClass(params)
     train_splits, val_splits, test_splits = None, None, None
-    if params['mode'] == 'dev':
-        # test_splits = [1, 2, 3, 4]
-        # val_splits = [2, 3, 4, 1]
-        # train_splits = [[3, 4], [4, 1], [1, 2], [2, 3]]
 
-        # SUGGESTION: Considering the long training time, major tuning of the method can be done on the first split.
-        # Once you finlaize the method you can evaluate its performance on the complete cross-validation splits
+    if params['mode'] == 'dev':
         test_splits = [1]
         val_splits = [2]
         train_splits = [[3, 4, 5, 6]]
 
     elif params['mode'] == 'eval':
         test_splits = [[7, 8]]
-        val_splits = [[1, 2]]
-        train_splits = [[3, 4, 5, 6]]
+        val_splits = [[1]]
+        train_splits = [[2, 3, 4, 5, 6]]
 
     avg_scores_val = []
     avg_scores_test = []
@@ -200,16 +195,16 @@ def main(argv):
                 verbose=2
             )
 
-            # Calculate the metrics
             sed_pred = evaluation_metrics.reshape_3Dto2D(pred[0]) > 0.5
             doa_pred = evaluation_metrics.reshape_3Dto2D(pred[1] if params['doa_objective'] is 'mse' else pred[1][:, :, nb_classes:])
 
+            # Calculate the DCASE 2019 metrics - Detection-only and Localization-only scores
             sed_metric[epoch_cnt, :] = evaluation_metrics.compute_sed_scores(sed_pred, sed_gt, data_gen_val.nb_frames_1s())
             doa_metric[epoch_cnt, :] = evaluation_metrics.compute_doa_scores_regr_xyz(doa_pred, doa_gt, sed_pred, sed_gt)
             seld_metric[epoch_cnt] = evaluation_metrics.early_stopping_metric(sed_metric[epoch_cnt, :], doa_metric[epoch_cnt, :])
 
-            # new SELD scores
-            cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_val.get_nb_classes(), doa_threshold=20)
+            # Calculate the DCASE 2020 metrics - Location-aware detection and Class-aware localization scores
+            cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_val.get_nb_classes(), doa_threshold=params['lad_doa_thresh'])
             pred_dict = feat_cls.regression_label_format_to_output_format(
                 sed_pred, doa_pred
             )
@@ -236,14 +231,14 @@ def main(argv):
 
             print(
                 'epoch_cnt: {}, time: {:0.2f}s, tr_loss: {:0.2f}, '
-                '\n\t\t OLD SCORES: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_F:{:0.2f}, seld_score: {:0.2f}, ' 
-                '\n\t\t NEW SCORES: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_F:{:0.2f}, seld_score: {:0.2f}, '
+                '\n\t\t DCASE2019 SCORES: ER: {:0.2f}, F: {:0.1f}, DE: {:0.1f}, FR:{:0.1f}, seld_score: {:0.2f}, ' 
+                '\n\t\t DCASE2020 SCORES: ER: {:0.2f}, F: {:0.1f}, DE: {:0.1f}, DE_F:{:0.1f}, seld_score (early stopping score): {:0.2f}, '
                 'best_seld_score: {:0.2f}, best_epoch : {}\n'.format(
                     epoch_cnt, time.time() - start, tr_loss[epoch_cnt],
-                    sed_metric[epoch_cnt, 0], sed_metric[epoch_cnt, 1],
-                    doa_metric[epoch_cnt, 0], doa_metric[epoch_cnt, 1], seld_metric[epoch_cnt],
-                    new_metric[epoch_cnt, 0], new_metric[epoch_cnt, 1],
-                    new_metric[epoch_cnt, 2], new_metric[epoch_cnt, 3],
+                    sed_metric[epoch_cnt, 0], sed_metric[epoch_cnt, 1]*100,
+                    doa_metric[epoch_cnt, 0], doa_metric[epoch_cnt, 1]*100, seld_metric[epoch_cnt],
+                    new_metric[epoch_cnt, 0], new_metric[epoch_cnt, 1]*100,
+                    new_metric[epoch_cnt, 2], new_metric[epoch_cnt, 3]*100,
                     new_seld_metric[epoch_cnt], best_seld_metric, best_epoch
                 )
             )
@@ -255,19 +250,23 @@ def main(argv):
         print('\nResults on validation split:')
         print('\tUnique_name: {} '.format(unique_name))
         print('\tSaved model for the best_epoch: {}'.format(best_epoch))
-        print('\tSELD_score: {}'.format(best_seld_metric))
-        print('\tDOA Metrics: DOA_error: {}, frame_recall: {}'.format(doa_metric[best_epoch, 0],
-                                                                      doa_metric[best_epoch, 1]))
-        print('\tSED Metrics: ER_overall: {}, F1_overall: {}\n'.format(sed_metric[best_epoch, 0],
-                                                                       sed_metric[best_epoch, 1]))
+        print('\tSELD_score (early stopping score) : {}'.format(best_seld_metric))
+
+        print('\n\tDCASE2020 scores')
+        print('\tClass-aware localization scores: DOA_error: {:0.1f}, F-score: {:0.1f}'.format(new_metric[best_epoch, 2], new_metric[best_epoch, 3]*100))
+        print('\tLocation-aware detection scores: Error rate: {:0.2f}, F-score: {:0.1f}'.format(new_metric[best_epoch, 0], new_metric[best_epoch, 1]*100))
+
+        print('\n\tDCASE2019 scores')
+        print('\tLocalization-only scores: DOA_error: {:0.1f}, Frame recall: {:0.1f}'.format(doa_metric[best_epoch, 0], doa_metric[best_epoch, 1]*100))
+        print('\tDetection-only scores: Error rate: {:0.2f}, F-score: {:0.1f}\n'.format(sed_metric[best_epoch, 0], sed_metric[best_epoch, 1]*100))
 
         # ------------------  Calculate metric scores for unseen test split ---------------------------------
-        print('Loading testing dataset:')
+        print('\nLoading the best model and predicting results on the testing split')
+        print('\tLoading testing dataset:')
         data_gen_test = cls_data_generator.DataGenerator(
             params=params, split=split, shuffle=False, per_file=params['dcase_output'], is_eval=True if params['mode'] is 'eval' else False
         )
 
-        print('\nLoading the best model and predicting results on the testing split')
         model = keras_model.load_seld_model('{}_model.h5'.format(unique_name), params['doa_objective'])
         pred_test = model.predict_generator(
             generator=data_gen_test.generate(),
@@ -306,12 +305,13 @@ def main(argv):
             test_gt = collect_test_labels(data_gen_test, test_data_out, nb_classes, params['quick_test'])
             test_sed_gt = evaluation_metrics.reshape_3Dto2D(test_gt[0])
             test_doa_gt = evaluation_metrics.reshape_3Dto2D(test_gt[1])
-
+         
+            # Calculate DCASE2019 scores
             test_sed_loss = evaluation_metrics.compute_sed_scores(test_sed_pred, test_sed_gt, data_gen_test.nb_frames_1s())
             test_doa_loss = evaluation_metrics.compute_doa_scores_regr_xyz(test_doa_pred, test_doa_gt, test_sed_pred, test_sed_gt)
             test_metric_loss = evaluation_metrics.early_stopping_metric(test_sed_loss, test_doa_loss)
 
-            # new SELD scores
+            # Calculate DCASE2020 scores
             cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_test.get_nb_classes(), doa_threshold=20)
             test_pred_dict = feat_cls.regression_label_format_to_output_format(
                 test_sed_pred, test_doa_pred
@@ -329,17 +329,15 @@ def main(argv):
 
             avg_scores_test.append([test_new_metric[0], test_new_metric[1], test_new_metric[2], test_new_metric[3], test_new_seld_metric])
             print('Results on test split:')
-            print('\tOld Metrics: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_FR: {:0.2f}, SELD: {:0.2f}'.format(test_sed_loss[0], test_sed_loss[1], test_doa_loss[0], test_doa_loss[1], test_metric_loss))
-            print('\tNew Metrics: ER: {:0.2f}, F: {:0.2f}, DE: {:0.2f}, DE_FR: {:0.2f}, SELD: {:0.2f}'.format(test_new_metric[0], test_new_metric[1], test_new_metric[2], test_new_metric[3], test_new_seld_metric))
 
-    print('\n\nValidation split scores per fold:')
-    for cnt in range(len(val_splits)):
-        print('\tSplit {} - SED ER: {:0.2f} F1: {:0.2f}; DOA error: {:0.2f} frame recall: {:0.2f}; SELD score: {:0.2f}'.format(cnt, avg_scores_val[cnt][0], avg_scores_val[cnt][1], avg_scores_val[cnt][2], avg_scores_val[cnt][3], avg_scores_val[cnt][4]))
+            print('\tDCASE2020 Scores')
+            print('\tClass-aware localization scores: DOA Error: {:0.1f}, F-score: {:0.1f}'.format(test_new_metric[2], test_new_metric[3]*100))
+            print('\tLocation-aware detection scores: Error rate: {:0.2f}, F-score: {:0.1f}'.format(test_new_metric[0], test_new_metric[1]*100))
+            print('\tSELD (early stopping metric): {:0.2f}'.format(test_new_seld_metric))
 
-    if params['mode'] is 'dev':
-        print('\n\nTesting split scores per fold:')
-        for cnt in range(len(val_splits)):
-            print('\tSplit {} - SED ER: {:0.2f} F1: {:0.2f}; DOA error: {:0.2f} frame recall: {:0.2f}; SELD score: {:0.2f}'.format(cnt, avg_scores_test[cnt][0], avg_scores_test[cnt][1], avg_scores_test[cnt][2], avg_scores_test[cnt][3], avg_scores_test[cnt][4]))
+            print('\n\tDCASE2019 Scores')
+            print('\tLocalization-only scores: DOA Error: {:0.1f}, Frame recall: {:0.1f}'.format(test_doa_loss[0], test_doa_loss[1]*100))
+            print('\tDetection-only scores:Error rate: {:0.2f}, F-score: {:0.1f}'.format(test_sed_loss[0], test_sed_loss[1]*100))
 
 
 if __name__ == "__main__":
