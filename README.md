@@ -1,74 +1,50 @@
 
-# DCASE 2019: Sound event localization and detection (SELD) task
-> The DCASE 2019 Challenge has now ended, the results of all the submissions can be seen [here](http://dcase.community/challenge2019/task-sound-event-localization-and-detection-results). 
-
-> Check [our new repository](https://github.com/sharathadavanne/seld-net) for sound event localization, detection and tracking of multiple stationary and moving sources. This repository also includes datasets with stationary sources in multi-reverberant scenario synthesized using Ambisonic and Circular Array formats. Additionally, it includes datasets with sources moving in varying angular velocities in Ambisonic format.
-
-Sound event localization and detection (SELD) is the combined task of identifying the temporal onset and offset of a sound event, tracking the spatial location when active, and further associating a textual label describing the sound event. As part of [DCASE 2019](http://dcase.community/challenge2019/index), we are organizing an [SELD task](http://dcase.community/challenge2019/task-sound-event-localization-and-detection) with a [multi-room reverberant dataset synthesized using real-life impulse response (IR) collected at five different environments](https://arxiv.org/pdf/1905.08546.pdf 'Paper on Arxiv'). This github page shares the benchmark method, SELDnet, and the dataset for the task. The paper describing the SELDnet can be found on [IEEExplore](https://ieeexplore.ieee.org/document/8567942 'Paper on IEEE Xplore') and on [Arxiv](https://arxiv.org/pdf/1807.00129.pdf 'Paper on Arxiv'). The dataset, baseline method and benchmark scores have been described in the task paper available [here](https://arxiv.org/pdf/1905.08546.pdf 'Paper on Arxiv').
+# DCASE 2020: Sound event localization and detection (SELD) task
+[Please visit the official webpage of the DCASE 2020 Challenge for details missing in this repo](http://dcase.community/challenge2020/task-sound-event-localization-and-detection). 
    
-If you are using this code or the datasets in any format, then please consider citing the following two papers
-
-> Sharath Adavanne, Archontis Politis and Tuomas Virtanen, "A multi-room reverberant dataset for sound event localization and detection" submitted in the Workshop on Detection and Classification of Acoustic Scenes and Events (DCASE 2019)
+As the baseline method for the SELD task, we use the SELDnet method studied in the following papers. If you are using this baseline method or the datasets in any format, then please consider citing the following two papers
 
 > Sharath Adavanne, Archontis Politis, Joonas Nikunen and Tuomas Virtanen, "Sound event localization and detection of overlapping sources using convolutional recurrent neural network" in IEEE Journal of Selected Topics in Signal Processing (JSTSP 2018)
 
-## More about SELDnet
-The SELDnet architecture is as shown below. The input is the multichannel audio, from which the phase and magnitude components are extracted and used as separate features. The proposed method takes a sequence of consecutive spectrogram frames as input and predicts all the sound event classes active for each of the input frame along with their respective spatial location, producing the temporal activity and DOA trajectory for each sound event class. In particular, a convolutional recurrent neural network (CRNN) is used to map the frame sequence to the two outputs in parallel. At the first output, SED is performed as a multi-label multi-class classification task, allowing the network to simultaneously estimate the presence of multiple sound events for each frame. At the second output, DOA estimates in the continuous 3D space are obtained as a multi-output regression task, where each sound event class is associated with two regressors that estimate the spherical coordinates azimuth (azi) and elevation (ele) of the DOA on a unit sphere around the microphone.
+> Sharath Adavanne, Archontis Politis and Tuomas Virtanen, "Localization, Detection and Tracking of Multiple Moving Sound Sources with a Convolutional Recurrent Neural Network" in the Workshop on Detection and Classification of Acoustic Scenes and Events (DCASE 2019)
 
-In the benchmark method, the variables in the image below have the following values, T = 128, M = 2048, C = 4, P = 64, MP<sub>1</sub> = MP<sub>2</sub> = 8, MP<sub>3</sub> = 4, Q = R = 128, N = 11.
+## BASELINE METHOD
+
+In comparison to the SELDnet studied in the papers above, we have changed the following to improve its performance and evaluate the performance better.
+ * **Features**: The original SELDnet employed naive phase and magnitude components of the spectrogram as the input feature for all input formats of audio. In this baseline method, we use separate features for first-order Ambisonic (FOA) and microphone array (MIC) datasets. As the interaural level difference feature, we employ the 64-band mel energies extracted from each channel of the input audio for both FOA and MIC. To encode the interaural time difference features, we employ intensity vector features for FOA, and generalized cross correlation features for MIC. 
+ * **Loss/Objective**: The original SELDnet employed mean square error (MSE) for the DOA loss estimation, and this was computed irrespecitve of the presence or absence of the sound event. In the current baseline, we used a masked-MSE, which computes MSE only when the sound event is active in the reference.
+ * **Evaluation metrics**: The performance of the original SELDnet was evaluated with stand-alone metrics for detection, and localization. Mainly because there was no suitable metric which could jointly evaluate the performance of localization and detection. Since then, we have proposed a new metric that can jointly evaluate the performance (more about it is described in the metrics section below), and we employ this new metric for evaluation here.   
+ 
+The final SELDnet architecture is as shown below. The input is the multichannel audio, from which the different acoustic features are extracted based on the input format of the audio. Based on the chosen dataset (FOA or MIC), the baseline method takes a sequence of consecutive feature-frames and predicts all the active sound event classes for each of the input frame along with their respective spatial location, producing the temporal activity and DOA trajectory for each sound event class. In particular, a convolutional recurrent neural network (CRNN) is used to map the frame sequence to the two outputs in parallel. At the first output, SED is performed as a multi-label multi-class classification task, allowing the network to simultaneously estimate the presence of multiple sound events for each frame. At the second output, DOA estimates in the continuous 3D space are obtained as a multi-output regression task, where each sound event class is associated with three regressors that estimate the Cartesian coordinates x, y and z axes of the DOA on a unit sphere around the microphone.
 
 <p align="center">
-   <img src="https://github.com/sharathadavanne/seld-dcase2019/blob/master/images/DCASE2019_SELDnet.png" width="600" title="SELDnet Architecture">
+   <img src="https://github.com/sharathadavanne/seld-dcase2020/blob/dcase2020/images/CRNN_SELDT_DCASE2020.png" width="600" title="SELDnet Architecture">
 </p>
 
+The SED output of the network is in the continuous range of [0 1] for each sound event in the dataset, and this value is thresholded to obtain a binary decision for the respective sound event activity. Finally, the respective DOA estimates for these active sound event classes provide their spatial locations.
 
-
-The SED output of the network is in the continuous range of [0 1] for each sound event in the dataset, and this value is thresholded to obtain a binary decision for the respective sound event activity as shown in figure below. Finally, the respective DOA estimates for these active sound event classes provide their spatial locations.
-
-<p align="center">
-   <img src="https://github.com/sharathadavanne/seld-dcase2019/blob/master/images/DCASE2019_SELDnet_output.png" width="400" title="SELDnet output format">
-</p>
-
-The figure below visualizes the SELDnet input and outputs for one of the recordings in the dataset. The horizontal-axis of all sub-plots for a given dataset represents the same time frames, the vertical-axis for spectrogram sub-plot represents the frequency bins, vertical-axis for SED reference and prediction sub-plots represents the unique sound event class identifier, and for the DOA reference and prediction sub-plots, it represents the azimuth and elevation angles in degrees. The figures represents each sound event class and its associated DOA outputs with a unique color. Similar plot can be visualized on your results using the [provided script](misc_files/visualize_SELD_output.py).
+The figure below visualizes the SELDnet input and outputs for one of the recordings in the dataset. The horizontal-axis of all sub-plots for a given dataset represents the same time frames, the vertical-axis for spectrogram sub-plot represents the frequency bins, vertical-axis for SED reference and prediction sub-plots represents the unique sound event class identifier, and for the DOA reference and prediction sub-plots, it represents the distances along the Cartesian axes. The figures represents each sound event class and its associated DOA outputs with a unique color. Similar plot can be visualized on your results using the [provided script](visualize_SELD_output.py).
 
 <p align="center">
-   <img src="https://github.com/sharathadavanne/seld-dcase2019/blob/master/images/SELDnet_output.png" width="1200" title="SELDnet input and output visualization">
+   <img src="https://github.com/sharathadavanne/seld-dcase2020/blob/dcase2020/images/SELDnet_output.jpg" width="1200" title="SELDnet input and output visualization">
 </p>
 
 ## DATASETS
 
 The participants can choose either of the two or both the following datasets,
 
- * **TAU Spatial Sound Events 2019 - Ambisonic**
- * **TAU Spatial Sound Events 2019 - Microphone Array**
+ * **TAU Spatial Sound Events 2020 - Ambisonic**
+ * **TAU Spatial Sound Events 2020 - Microphone Array**
 
-These datasets contain recordings from an identical scene, with **TAU Spatial Sound Events 2019 - Ambisonic** providing four-channel First-Order Ambisonic (FOA) recordings while  **TAU Spatial Sound Events 2019 - Microphone Array** provides four-channel directional microphone recordings from a tetrahedral array configuration. Both formats are extracted from the same microphone array, and additional information on the spatial characteristics of each format can be found below. The participants can choose one of the two, or both the datasets based on the audio format they prefer. Both the datasets, consists of a development and evaluation set. The development set consists of 400, one minute long recordings sampled at 48000 Hz, divided into four cross-validation splits of 100 recordings each. The evaluation set consists of 100, one-minute recordings. These recordings were synthesized using spatial room impulse response (IRs) collected from five indoor locations, at 504 unique combinations of azimuth-elevation-distance. Furthermore, in order to synthesize the recordings the collected IRs were convolved with [isolated sound events dataset from DCASE 2016 task 2](http://www.cs.tut.fi/sgn/arg/dcase2016/task-sound-event-detection-in-synthetic-audio#audio-dataset). Finally, to create a realistic sound scene recording, natural ambient noise collected in the IR recording locations was added to the synthesized recordings such that the average SNR of the sound events was 30 dB.
+These datasets contain recordings from an identical scene, with **TAU Spatial Sound Events 2019 - Ambisonic** providing four-channel First-Order Ambisonic (FOA) recordings while  **TAU Spatial Sound Events 2019 - Microphone Array** provides four-channel directional microphone recordings from a tetrahedral array configuration. Both formats are extracted from the same microphone array, and additional information on the spatial characteristics of each format can be found below. The participants can choose one of the two, or both the datasets based on the audio format they prefer. Both the datasets, consists of a development and evaluation set. The development set consists of 600, one minute long recordings sampled at 24000 Hz. All participants are expected to use the fixed splits provided in the baseline method for reporting the development scores. We use 400 recordings for training split (fold 3 to 6), 100 for validation (fold 2) and 100 for testing (fold 1). The evaluation set consists of 200, one-minute recordings, and will be released at a later point. 
 
-The eleven sound event classes used in the dataset and their corresponding index values required for the submission format are as following
+More details on the recording procedure and dataset can be read on the [DCASE 2020 task webpage](http://dcase.community/challenge2020/task-sound-event-localization-and-detection).
 
-| Sound class| Index |
-| ----| ---- |
-| knock | 0 |
-| drawer | 1 |
-| clearthroat | 2 |
-| phone | 3 |
-| keysDrop | 4 |
-| speech | 5 |
-| keyboard | 6 |
-| pageturn | 7 |
-| cough | 8 |
-| doorslam | 9 |
-| laughter | 10 |
-
-More details on the recording procedure and dataset can be read on the [DCASE 2019 task webpage](http://dcase.community/challenge2019/task-sound-event-localization-and-detection) or on the [task description paper](https://arxiv.org/pdf/1905.08546.pdf 'Paper on Arxiv').
-
-The two development datasets can be downloaded from the link - [**TAU Spatial Sound Events 2019 - Ambisonic and Microphone Array**, Development dataset (Version 2)](https://doi.org/10.5281/zenodo.2599196) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.2599196.svg)](https://doi.org/10.5281/zenodo.2599196) 
+The two development datasets can be downloaded from the link - [**TAU Spatial Sound Events 2020 - Ambisonic and Microphone Array**, Development dataset (Version 2)](https://doi.org/10.5281/zenodo.2599196) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.2599196.svg)](https://doi.org/10.5281/zenodo.2599196) 
 
 > Dataset was updated on <strong>20 March 2019</strong> to remove labels of sound events that were missing in the audio (version 2). In order to update already downloaded dataset version 1, download only the <code>metadata_dev.zip</code> file from version 2.
 
-The evaluation datasets can be downloaded from the link - [**TAU Spatial Sound Events 2019 - Ambisonic and Microphone Array**, Evaluation dataset](https://doi.org/10.5281/zenodo.3377088) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3377088.svg)](https://doi.org/10.5281/zenodo.3377088) 
-
-> Dataset was updated on <strong>26 August 2019</strong>: Now that the task has ended, we are releasing the reference labels for the evaluation dataset (version 2).
+The evaluation datasets can be downloaded from the link - [**TAU Spatial Sound Events 2020 - Ambisonic and Microphone Array**, Evaluation dataset](https://doi.org/10.5281/zenodo.3377088) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3377088.svg)](https://doi.org/10.5281/zenodo.3377088) 
 
 
 ## Getting Started
@@ -82,15 +58,13 @@ This repository consists of multiple Python scripts forming one big architecture
 * The `evaluation_metrics.py` script, implements the core metrics from sound event detection evaluation module http://tut-arg.github.io/sed_eval/ and the DOA metrics explained in the paper.
 * The `seld.py` is a wrapper script that trains the SELDnet. The training stops when the SELD error (check paper) stops improving.
 
-Additionally, we also provide supporting scripts that help analyse the dataset and results.
- * `check_dataset_distribution.py` visualizes the dataset distribution in different configurations.
+Additionally, we also provide supporting scripts that help analyse the results.
  * `visualize_SELD_output.py` script to visualize the SELDnet output
- * `test_SELD_metrics.py` test script to evaluate the different metrics employed
-
+ 
 
 ### Prerequisites
 
-The provided codebase has been tested on python 2.7.10/3.5.3. and Keras 2.2.2./2.2.4
+The provided codebase has been tested on python 3.6.9/3.7.3 and Keras 2.2.4/2.3.1
 
 
 ### Training the SELDnet
@@ -99,64 +73,64 @@ In order to quickly train SELDnet follow the steps below.
 
 * For the chosen dataset (Ambisonic or Microphone), download the respective zip file. This contains both the audio files and the respective metadata. Unzip the files under the same 'base_folder/', ie, if you are Ambisonic dataset, then the 'base_folder/' should have two folders - 'foa_dev/' and 'metadata_dev/' after unzipping.
 
-* Now update the respective dataset path in `parameter.py` script. For the above example, you will change `dataset_dir='base_folder/'`. Also provide a directory path `feat_label_dir` in the same `parameter.py` script where all the features and labels will be dumped. Make sure this folder has sufficient space. For example if you use the baseline configuration, you will need about 160 GB in total just for the features and labels.
+* Now update the respective dataset path in `parameter.py` script. For the above example, you will change `dataset_dir='base_folder/'`. Also provide a directory path `feat_label_dir` in the same `parameter.py` script where all the features and labels will be dumped. 
 
-* Extract features from the downloaded dataset by running the `batch_feature_extraction.py` script. First, update the parameters in the script, check the python file for more comments. You can now run the script as shown below. This will dump the normalized features and labels here. Since feature extraction is a one-time thing, this script is standalone and does not use the `parameter.py` file.
+* Extract features from the downloaded dataset by running the `batch_feature_extraction.py` script. Run the script as shown below. This will dump the normalized features and labels in the `feat_label_dir` folder.
 
 ```
-python batch_feature_extraction.py
+python3 batch_feature_extraction.py
 ```
 
 You can now train the SELDnet using default parameters using
 ```
-python seld.py
+python3 seld.py
 ```
 
 * Additionally, you can add/change parameters by using a unique identifier \<task-id\> in if-else loop as seen in the `parameter.py` script and call them as following
 ```
-python seld.py <task-id> <job-id>
+python3 seld.py <task-id> <job-id>
 ```
 Where \<job-id\> is a unique identifier which is used for output filenames (models, training plots). You can use any number or string for this.
 
 In order to get baseline results on the development set for Microphone array recordings, you can run the following command
 ```
-python seld.py 2
+python3 seld.py 2
 ```
 Similarly, for Ambisonic format baseline results, run the following command
 ```
-python seld.py 4
+python3 seld.py 4
 ```
 
 * By default, the code runs in `quick_test = True` mode. This trains the network for 2 epochs on only 2 mini-batches. Once you get to run the code sucessfully, set `quick_test = False` in `parameter.py` script and train on the entire data.
 
 * The code also plots training curves, intermediate results and saves models in the `model_dir` path provided by the user in `parameter.py` file.
 
-* In order to visualize the output of SELDnet and for submission of results, set `dcase_output=True` and provide `dcase_dir` directory. This will dump file-wise results in the directory, which can be individually visualized using `misc_files/visualize_SELD_output.py` script.
-
-* Finally, the average development dataset score across the four folds can be obtained using `calculate_SELD_metrics.py` script. Provide the directory where you dumped the file-wise results above and the reference metadata folder. Check the comments in the script for more description.
+* In order to visualize the output of SELDnet and for submission of results, set `dcase_output=True` and provide `dcase_dir` directory. This will dump file-wise results in the directory, which can be individually visualized using `visualize_SELD_output.py` script.
 
 ## Results on development dataset
 
+As the evaluation metrics we use two different approaches as discussed in our recent paper below
 
-| Dataset | Error rate | F score| DOA error | Frame recall |
+> Annamaria Mesaros, Sharath Adavanne, Archontis Politis, Toni Heittola, and Tuomas Virtanen. Joint measurement of localization and detection of sound events. In IEEE Workshop on Applications of Signal Processing to Audio and Acoustics (WASPAA). New Paltz, NY, Oct 2019.
+
+The first metric is more focused on the detection part, also referred as the location-aware detection, which gives us the error rate (ER) and F-score (F) in one-second non-overlapping segments. We consider the prediction to be correct if the prediction and reference class are the same, and the distance between them is below 20&deg;.
+The second metric is more focused on the localization part, also referred as the class-aware localization, which gives us the DOA error (DE), and F-score (DE_F) in one-second non-overlapping segments. Unlike the location-aware detection, we do not use any distance threshold, but estimate the distance between the correct prediction and reference.
+
+The evaluation metric scores (you can find them as `DCASE2020 scores` in the baseline method log) for the test split of the development dataset is given below    
+
+| Dataset | ER | F | DE | DE_F |
 | ----| --- | --- | --- | --- |
-| Ambisonic | 0.34 | 79.9 % | 28.5&deg; | 85.4 % |
-| Microphone Array |0.35 | 80.0 % | 30.8&deg; | 84.0 % |
+| Ambisonic (FOA) | 0.84 | 23.3 % | 28.0&deg; | 56.4 % |
+| Microphone Array (MIC) |0.82 | 24.3 % | 28.4&deg; | 61.2 % |
 
 **Note:** The reported baseline system performance is not exactly reproducible due to varying setups. However, you should be able to obtain very similar results.
 
-## DOA estimation: regression vs classification
-
-The DOA estimation can be approached as both a regression or a classification task. In the baseline, it is handled as regression task. In case you plan to use a classification approach check the `test_SELD_metrics.py` script in misc_files folder. It implements a classification version of DOA and also uses a corresponding metric function.
-
-
 ## Submission
 
-* Before submission, make sure your SELD results are correct by visualizing the results using `misc_files/visualize_SELD_output.py` script
-* Make sure the file-wise output you are submitting is produced at 20 ms hop length. At this hop length a 60 s audio file has 3000 frames.
-* Calculate your development score for the four splits using the `calculate_SELD_metrics.py` script. Check if the average results you are obtaining here is comparable to the results you were obtaining during training.
+* Before submission, make sure your SELD results look good by visualizing the results using `visualize_SELD_output.py` script
+* Make sure the file-wise output you are submitting is produced at 100 ms hop length. At this hop length a 60 s audio file has 600 frames.
 
-For more information on the submission file formats [check the website](http://dcase.community/challenge2019/task-sound-event-localization-and-detection#submission)
+For more information on the submission file formats [check the website](http://dcase.community/challenge2020/task-sound-event-localization-and-detection#submission)
 
 ## License
 
