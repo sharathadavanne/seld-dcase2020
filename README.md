@@ -18,7 +18,7 @@ In comparison to the SELDnet studied in the papers above, we have changed the fo
 The final SELDnet architecture is as shown below. The input is the multichannel audio, from which the different acoustic features are extracted based on the input format of the audio. Based on the chosen dataset (FOA or MIC), the baseline method takes a sequence of consecutive feature-frames and predicts all the active sound event classes for each of the input frame along with their respective spatial location, producing the temporal activity and DOA trajectory for each sound event class. In particular, a convolutional recurrent neural network (CRNN) is used to map the frame sequence to the two outputs in parallel. At the first output, SED is performed as a multi-label multi-class classification task, allowing the network to simultaneously estimate the presence of multiple sound events for each frame. At the second output, DOA estimates in the continuous 3D space are obtained as a multi-output regression task, where each sound event class is associated with three regressors that estimate the Cartesian coordinates x, y and z axes of the DOA on a unit sphere around the microphone.
 
 <p align="center">
-   <img src="https://github.com/sharathadavanne/seld-dcase2020/blob/dcase2020/images/CRNN_SELDT_DCASE2020.png" width="600" title="SELDnet Architecture">
+   <img src="https://github.com/sharathadavanne/seld-dcase2020/blob/master/images/CRNN_SELDT_DCASE2020.png" width="600" title="SELDnet Architecture">
 </p>
 
 The SED output of the network is in the continuous range of [0 1] for each sound event in the dataset, and this value is thresholded to obtain a binary decision for the respective sound event activity. Finally, the respective DOA estimates for these active sound event classes provide their spatial locations.
@@ -26,7 +26,7 @@ The SED output of the network is in the continuous range of [0 1] for each sound
 The figure below visualizes the SELDnet input and outputs for one of the recordings in the dataset. The horizontal-axis of all sub-plots for a given dataset represents the same time frames, the vertical-axis for spectrogram sub-plot represents the frequency bins, vertical-axis for SED reference and prediction sub-plots represents the unique sound event class identifier, and for the DOA reference and prediction sub-plots, it represents the distances along the Cartesian axes. The figures represents each sound event class and its associated DOA outputs with a unique color. Similar plot can be visualized on your results using the [provided script](visualize_SELD_output.py).
 
 <p align="center">
-   <img src="https://github.com/sharathadavanne/seld-dcase2020/blob/dcase2020/images/SELDnet_output.jpg" width="1200" title="SELDnet input and output visualization">
+   <img src="https://github.com/sharathadavanne/seld-dcase2020/blob/master/images/SELDnet_output.jpg" width="600" title="SELDnet input and output visualization">
 </p>
 
 ## DATASETS
