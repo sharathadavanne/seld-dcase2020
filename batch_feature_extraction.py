@@ -1,5 +1,4 @@
 # Extracts the features, labels, and normalizes the development and evaluation split features.
-# NOTE: Change the dataset_dir and feat_label_dir path accordingly
 
 import cls_feature_class
 import parameter
