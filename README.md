@@ -33,16 +33,14 @@ The figure below visualizes the SELDnet input and outputs for one of the recordi
 
 The participants can choose either of the two or both the following datasets,
 
- * **TAU Spatial Sound Events 2020 - Ambisonic**
- * **TAU Spatial Sound Events 2020 - Microphone Array**
+ * **TAU-NIGENS Spatial Sound Events 2020 - Ambisonic**
+ * **TAU-NIGENS Spatial Sound Events 2020 - Microphone Array**
 
-These datasets contain recordings from an identical scene, with **TAU Spatial Sound Events 2020 - Ambisonic** providing four-channel First-Order Ambisonic (FOA) recordings while  **TAU Spatial Sound Events 2020 - Microphone Array** provides four-channel directional microphone recordings from a tetrahedral array configuration. Both formats are extracted from the same microphone array, and additional information on the spatial characteristics of each format can be found below. The participants can choose one of the two, or both the datasets based on the audio format they prefer. Both the datasets, consists of a development and evaluation set. The development set consists of 600, one minute long recordings sampled at 24000 Hz. All participants are expected to use the fixed splits provided in the baseline method for reporting the development scores. We use 400 recordings for training split (fold 3 to 6), 100 for validation (fold 2) and 100 for testing (fold 1). The evaluation set consists of 200, one-minute recordings, and will be released at a later point. 
+These datasets contain recordings from an identical scene, with **TAU-NIGENS Spatial Sound Events 2020 - Ambisonic** providing four-channel First-Order Ambisonic (FOA) recordings while  **TAU-NIGENS Spatial Sound Events 2020 - Microphone Array** provides four-channel directional microphone recordings from a tetrahedral array configuration. Both formats are extracted from the same microphone array, and additional information on the spatial characteristics of each format can be found below. The participants can choose one of the two, or both the datasets based on the audio format they prefer. Both the datasets, consists of a development and evaluation set. The development set consists of 600, one minute long recordings sampled at 24000 Hz. All participants are expected to use the fixed splits provided in the baseline method for reporting the development scores. We use 400 recordings for training split (fold 3 to 6), 100 for validation (fold 2) and 100 for testing (fold 1). The evaluation set consists of 200, one-minute recordings, and will be released at a later point. 
 
 More details on the recording procedure and dataset can be read on the [DCASE 2020 task webpage](http://dcase.community/challenge2020/task-sound-event-localization-and-detection).
 
-The two development datasets can be downloaded from the link - [**TAU Spatial Sound Events 2020 - Ambisonic and Microphone Array**, Development dataset (Version 2)](https://doi.org/10.5281/zenodo.2599196) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.2599196.svg)](https://doi.org/10.5281/zenodo.2599196) 
-
-The evaluation datasets can be downloaded from the link - [**TAU Spatial Sound Events 2020 - Ambisonic and Microphone Array**, Evaluation dataset](https://doi.org/10.5281/zenodo.3377088) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3377088.svg)](https://doi.org/10.5281/zenodo.3377088) 
+The two development datasets can be downloaded from the link - [**TAU-NIGENS Spatial Sound Events 2020 - Ambisonic and Microphone Array**, Development dataset](https://doi.org/10.5281/zenodo.3740236) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3740236.svg)](https://doi.org/10.5281/zenodo.3740236) 
 
 
 ## Getting Started
