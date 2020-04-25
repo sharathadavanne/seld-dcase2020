@@ -261,6 +261,8 @@ class FeatureClass:
         create_folder(self._label_dir)
 
         for file_cnt, file_name in enumerate(os.listdir(self._desc_dir)):
+            if len(file_name)!=26: #checking clean metadata files #TODO this is not required if the dataset is clean
+                continue
             wav_filename = '{}.wav'.format(file_name.split('.')[0])
             desc_file_polar = self.load_output_format_file(os.path.join(self._desc_dir, file_name))
             desc_file = self.convert_output_format_polar_to_cartesian(desc_file_polar)
