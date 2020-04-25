@@ -26,9 +26,9 @@ def get_nb_files(_pred_file_list, _group='split'):
 
 
 # INPUT DIRECTORY
-ref_desc_files = 'results/metadata_dev' # reference description directory location
+ref_desc_files = '/scratch/asignal/sharath/DCASE2020_SELD_dataset/metadata_dev' # reference description directory location
 pred_output_format_files = 'results/2_mic_dev' # predicted output format directory location
-use_polar_format = False # Compute SELD metrics using polar or Cartesian coordinates
+use_polar_format = True # Compute SELD metrics using polar or Cartesian coordinates
 
 # Load feature class
 params = parameter.get_params()

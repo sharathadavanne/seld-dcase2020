@@ -54,7 +54,7 @@ This repository consists of multiple Python scripts forming one big architecture
 * The `evaluation_metrics.py` script implements the core metrics from sound event detection evaluation module http://tut-arg.github.io/sed_eval/ and the DOA metrics explained in the paper. These were used in the DCASE 2019 SELD task. We use this here to just for legacy comparison
 * The `SELD_evaluation_metrics.py` script implements the metrics for joint evaluation of detection and localization.
 * The `seld.py` is a wrapper script that trains the SELDnet. The training stops when the SELD error (check paper) stops improving.
-* The `calculate_dev_results_from_dcase_output.py` script computes the metrics results on your DCASE output format files. 
+* The `calculate_dev_results_from_dcase_output.py` script computes the metrics results on your DCASE output format files. You can switch between using polar or Cartesian based scoring. Ideally both should give identical results.
 
 Additionally, we also provide supporting scripts that help analyse the results.
  * `visualize_SELD_output.py` script to visualize the SELDnet output
@@ -118,8 +118,8 @@ The evaluation metric scores for the test split of the development dataset is gi
 
 | Dataset | ER | F | DE | DE_F |
 | ----| --- | --- | --- | --- |
-| Ambisonic (FOA) | 0.84 | 23.3 % | 28.0&deg; | 56.4 % |
-| Microphone Array (MIC) |0.82 | 24.3 % | 28.4&deg; | 61.2 % |
+| Ambisonic (FOA) | 0.72 | 37.4 % | 22.8&deg; | 60.7 % |
+| Microphone Array (MIC) |0.78 | 31.4 % | 27.3&deg; | 59.0 % |
 
 **Note:** The reported baseline system performance is not exactly reproducible due to varying setups. However, you should be able to obtain very similar results.
 
