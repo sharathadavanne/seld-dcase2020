@@ -177,9 +177,8 @@ class SELDMetrics(object):
                             total_framewise_matching_doa += 1
                             pred_ind = pred_ind_list.index(gt_val)
 
-                            gt_arr = np.array(gt[block_cnt][class_cnt][0][1][gt_ind]) * np.pi / 180
-                            pred_arr = np.array(pred[block_cnt][class_cnt][0][1][pred_ind]) * np.pi / 180
-
+                            gt_arr = np.array(gt_deg[block_cnt][class_cnt][0][1][gt_ind]) * np.pi / 180
+                            pred_arr = np.array(pred_deg[block_cnt][class_cnt][0][1][pred_ind]) * np.pi / 180
                             if gt_arr.shape[0]==1 and pred_arr.shape[0]==1:
                                 total_spatial_dist += distance_between_spherical_coordinates_rad(gt_arr[0][0], gt_arr[0][1], pred_arr[0][0], pred_arr[0][1])
                             else:
@@ -239,11 +238,15 @@ def distance_between_cartesian_coordinates(x1, y1, z1, x2, y2, z2):
 
     :return: angular distance in degrees
     """
-    dist = np.sqrt((x1-x2) ** 2 + (y1-y2) ** 2 + (z1-z2) ** 2)
-    # Making sure the dist values are in -1 to 1 range, else np.arccos kills the job
-    dist = np.clip(dist, -1, 1)
-    dist = 2 * np.arcsin(dist / 2.0) * 180/np.pi
+    # Normalize the Cartesian vectors
+    N1 = np.sqrt(x1**2 + y1**2 + z1**2 + 1e-10)
+    N2 = np.sqrt(x2**2 + y2**2 + z2**2 + 1e-10)
+    x1, y1, z1, x2, y2, z2 = x1/N1, y1/N1, z1/N1, x2/N2, y2/N2, z2/N2
+
+    #Compute the distance
+    dist = np.arccos(x1*x2 + y1*y2 + z1*z2) * 180 /np.pi
     return dist
+
 
 def least_distance_between_gt_pred(gt_list, pred_list):
     """
@@ -274,6 +277,7 @@ def least_distance_between_gt_pred(gt_list, pred_list):
     row_ind, col_ind = linear_sum_assignment(cost_mat)
     cost = cost_mat[row_ind, col_ind].sum()
     return cost
+
 
 def early_stopping_metric(sed_error, doa_error):
     """

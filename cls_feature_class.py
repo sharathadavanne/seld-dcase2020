@@ -263,7 +263,7 @@ class FeatureClass:
         for file_cnt, file_name in enumerate(os.listdir(self._desc_dir)):
             wav_filename = '{}.wav'.format(file_name.split('.')[0])
             desc_file_polar = self.load_output_format_file(os.path.join(self._desc_dir, file_name))
-            desc_file = self.convert_output_format_polar_to_cartesian_(desc_file_polar)
+            desc_file = self.convert_output_format_polar_to_cartesian(desc_file_polar)
             label_mat = self.get_labels_for_file(desc_file)
             print('{}: {}, {}'.format(file_cnt, file_name, label_mat.shape))
             np.save(os.path.join(self._label_dir, '{}.npy'.format(wav_filename.split('.')[0])), label_mat)
@@ -381,7 +381,7 @@ class FeatureClass:
                         _output_dict[_frame_ind].append([_tmp_class, _x[_frame_ind, _tmp_class], _y[_frame_ind, _tmp_class], _z[_frame_ind, _tmp_class]])
         return _output_dict
 
-    def convert_output_format_polar_to_cartesian_(self, in_dict):
+    def convert_output_format_polar_to_cartesian(self, in_dict):
         out_dict = {}
         for frame_cnt in in_dict.keys():
             if frame_cnt not in out_dict:
@@ -396,7 +396,21 @@ class FeatureClass:
                     y = np.sin(azi_rad) * tmp_label
                     z = np.sin(ele_rad)
                     out_dict[frame_cnt].append([tmp_val[0], x, y, z])
+        return out_dict
 
+    def convert_output_format_cartesian_to_polar(self, in_dict):
+        out_dict = {}
+        for frame_cnt in in_dict.keys():
+            if frame_cnt not in out_dict:
+                out_dict[frame_cnt] = []
+                for tmp_val in in_dict[frame_cnt]:
+                    x, y, z = tmp_val[1], tmp_val[2], tmp_val[3]
+
+                    # in degrees
+                    azimuth = np.arctan2(y, x) * 180 / np.pi
+                    elevation = np.arctan2(z, np.sqrt(x**2 + y**2)) * 180 / np.pi
+                    r = np.sqrt(x**2 + y**2 + z**2)
+                    out_dict[frame_cnt].append([tmp_val[0], azimuth, elevation])
         return out_dict
 
     # ------------------------------- Misc public functions -------------------------------

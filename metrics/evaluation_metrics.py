@@ -522,10 +522,13 @@ def distance_between_cartesian_coordinates(x1, y1, z1, x2, y2, z2):
 
     :return: angular distance in degrees
     """
-    dist = np.sqrt((x1-x2) ** 2 + (y1-y2) ** 2 + (z1-z2) ** 2)
-    # Making sure the dist values are in -1 to 1 range, else np.arccos kills the job
-    dist = np.clip(dist, -1, 1)
-    dist = 2 * np.arcsin(dist / 2.0) * 180/np.pi
+    # Normalize the Cartesian vectors
+    N1 = np.sqrt(x1**2 + y1**2 + z1**2 + 1e-10)
+    N2 = np.sqrt(x2**2 + y2**2 + z2**2 + 1e-10)
+    x1, y1, z1, x2, y2, z2 = x1/N1, y1/N1, z1/N1, x2/N2, y2/N2, z2/N2
+
+    #Compute the distance
+    dist = np.arccos(x1*x2 + y1*y2 + z1*z2) * 180 /np.pi
     return dist
 
 

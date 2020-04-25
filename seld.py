@@ -284,10 +284,10 @@ def main(argv):
             print('Dumping recording-wise results in: {}'.format(dcase_dump_folder))
 
             test_filelist = data_gen_test.get_filelist()
-            # Number of frames for a 60 second audio with 20ms hop length = 3000 frames
+            # Number of frames for a 60 second audio with 100ms hop length = 600 frames
             max_frames_with_content = data_gen_test.get_nb_frames()
 
-            # Number of frames in one batch (batch_size* sequence_length) consists of all the 3000 frames above with
+            # Number of frames in one batch (batch_size* sequence_length) consists of all the 600 frames above with
             # zero padding in the remaining frames
             frames_per_file = data_gen_test.get_frame_per_file()
 
@@ -312,7 +312,7 @@ def main(argv):
             test_metric_loss = evaluation_metrics.early_stopping_metric(test_sed_loss, test_doa_loss)
 
             # Calculate DCASE2020 scores
-            cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_test.get_nb_classes(), doa_threshold=20)
+            cls_new_metric = SELD_evaluation_metrics.SELDMetrics(nb_classes=data_gen_test.get_nb_classes(), doa_threshold=params['lad_doa_thresh'])
             test_pred_dict = feat_cls.regression_label_format_to_output_format(
                 test_sed_pred, test_doa_pred
             )

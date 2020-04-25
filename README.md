@@ -57,6 +57,7 @@ This repository consists of multiple Python scripts forming one big architecture
 * The `keras_model.py` script implements the SELDnet architecture.
 * The `evaluation_metrics.py` script, implements the core metrics from sound event detection evaluation module http://tut-arg.github.io/sed_eval/ and the DOA metrics explained in the paper.
 * The `seld.py` is a wrapper script that trains the SELDnet. The training stops when the SELD error (check paper) stops improving.
+* The `calculate_dev_results_from_dcase_output.py` script computes the metrics results on your DCASE output format files. 
 
 Additionally, we also provide supporting scripts that help analyse the results.
  * `visualize_SELD_output.py` script to visualize the SELDnet output

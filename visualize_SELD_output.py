@@ -55,7 +55,7 @@ pred_dict = feat_cls.load_output_format_file(pred)
 # load the reference output format
 ref_filename = os.path.basename(pred)
 ref_dict_polar = feat_cls.load_output_format_file(os.path.join(ref_dir, ref_filename))
-ref_dict = feat_cls.convert_output_format_polar_to_cartesian_(ref_dict_polar)
+ref_dict = feat_cls.convert_output_format_polar_to_cartesian(ref_dict_polar)
 
 pred_data = collect_classwise_data(pred_dict)
 ref_data = collect_classwise_data(ref_dict)
