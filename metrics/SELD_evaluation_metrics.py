@@ -244,7 +244,9 @@ def distance_between_cartesian_coordinates(x1, y1, z1, x2, y2, z2):
     x1, y1, z1, x2, y2, z2 = x1/N1, y1/N1, z1/N1, x2/N2, y2/N2, z2/N2
 
     #Compute the distance
-    dist = np.arccos(x1*x2 + y1*y2 + z1*z2) * 180 /np.pi
+    dist = x1*x2 + y1*y2 + z1*z2
+    dist = np.clip(dist, -1, 1)
+    dist = np.arccos(dist) * 180 / np.pi
     return dist
 
 
