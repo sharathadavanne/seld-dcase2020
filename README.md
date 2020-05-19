@@ -111,12 +111,12 @@ As the evaluation metrics we use two different approaches as discussed in our re
 
 > Annamaria Mesaros, Sharath Adavanne, Archontis Politis, Toni Heittola, and Tuomas Virtanen. Joint measurement of localization and detection of sound events. In IEEE Workshop on Applications of Signal Processing to Audio and Acoustics (WASPAA). New Paltz, NY, Oct 2019.
 
-The first metric is more focused on the detection part, also referred as the location-aware detection, which gives us the error rate (ER) and F-score (F) in one-second non-overlapping segments. We consider the prediction to be correct if the prediction and reference class are the same, and the distance between them is below 20&deg;.
-The second metric is more focused on the localization part, also referred as the class-aware localization, which gives us the DOA error (DE), and F-score (DE_F) in one-second non-overlapping segments. Unlike the location-aware detection, we do not use any distance threshold, but estimate the distance between the correct prediction and reference.
+The first two metrics are more focused on the detection part, also referred as the location-aware detection, correposnding to the error rate (ER<sub>20°</sub>) and F-score (F<sub>20°</sub>) in one-second non-overlapping segments. We consider the prediction to be correct if the prediction and reference class are the same, and the distance between them is below 20&deg;.
+The next two metrics are more focused on the localization part, also referred as the class-aware localization, corresponding to the localization error (LE<sub>CD</sub>) in degrees, and a localization Recall (LR<sub>CD</sub>) in one-second non-overlapping segments, where the subscript refers to _classification-dependent_. Unlike the location-aware detection, we do not use any distance threshold, but estimate the distance between the correct prediction and reference.
 
 The evaluation metric scores for the test split of the development dataset is given below    
 
-| Dataset | ER | F | DE | DE_F |
+| Dataset | ER<sub>20°</sub> | F<sub>20°</sub> | LE<sub>CD</sub> | LR<sub>CD</sub> |
 | ----| --- | --- | --- | --- |
 | Ambisonic (FOA) | 0.72 | 37.4 % | 22.8&deg; | 60.7 % |
 | Microphone Array (MIC) |0.78 | 31.4 % | 27.3&deg; | 59.0 % |
