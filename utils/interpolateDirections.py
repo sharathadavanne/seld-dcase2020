@@ -1,3 +1,6 @@
+import math
+import numpy as np
+
 def interpolateDirections(dir1_xyz, dir2_xyz, N):
 #
 # interpolate two direction vectors by performing spherical (rotational) 
@@ -9,9 +12,6 @@ def interpolateDirections(dir1_xyz, dir2_xyz, N):
 # dir1_xyz: 	numpy array, star vector
 # dir2_xyz: 	numpy array, end vector
 # N: 		integer, number of intervals to interpolate
-
-	import math
-	import numpy as np
 
 	angle12 = math.acos(dir1_xyz.dot(dir2_xyz))
 	cross12 = np.cross(dir1_xyz, dir2_xyz)
