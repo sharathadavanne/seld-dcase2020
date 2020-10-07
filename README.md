@@ -45,7 +45,11 @@ More details on the recording procedure and dataset can be read on the [DCASE 20
 
 A longer version of the report with additional details can be also found in [arXiv](https://arxiv.org/pdf/2006.01919.pdf).
 
-The development and evaluation datasets in both formats can be downloaded from the link - [**TAU-NIGENS Spatial Sound Events 2020 - Ambisonic and Microphone Array**, Development dataset](https://doi.org/10.5281/zenodo.4064792) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4064792.svg)](https://zenodo.org/record/4064792)
+The development and evaluation datasets in both formats can be downloaded from the link
+
+[**TAU-NIGENS Spatial Sound Events 2020 - Ambisonic and Microphone Array**, Development & Evaluation dataset](https://doi.org/10.5281/zenodo.4064792)
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4064792.svg)](https://zenodo.org/record/4064792)
 
 ## Getting Started
 
