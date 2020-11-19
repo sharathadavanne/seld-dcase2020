@@ -41,7 +41,7 @@ These datasets contain recordings from an identical scene, with **TAU-NIGENS Spa
 The development set consists of 600, one minute long recordings sampled at 24000 Hz. All participants are expected to use the fixed splits provided in the baseline method for reporting the development scores. We use 400 recordings for training split (fold 3 to 6), 100 for validation (fold 2) and 100 for testing (fold 1). The evaluation set consists of 200, one-minute recordings, and is released during the evaluation phase of the challenge. After the end of the DCASE2020 Challenge, the unknown labels of the evaluation set are also released for further testing and comparison of methods out of the challenge, with the challenge results.
 
 More details on the recording procedure and dataset can be read on the [DCASE 2020 task webpage](http://dcase.community/challenge2020/task-sound-event-localization-and-detection), and on the following report:
-> Archontis Politis, Sharath Adavanne, and Tuomas Virtanen (2020). "[A Dataset of Reverberant Spatial Sound Scenes with Moving Sources for Sound Event Localization and Detection]()". In _Proceedings of the Detection and Classification of Acoustic Scenes and Events Workshop (DCASE2020)_, Tokyo, Japan
+> Archontis Politis, Sharath Adavanne, and Tuomas Virtanen (2020). "[A Dataset of Reverberant Spatial Sound Scenes with Moving Sources for Sound Event Localization and Detection](http://dcase.community/documents/workshop2020/proceedings/DCASE2020Workshop_Politis_88.pdf)". In _Proceedings of the Detection and Classification of Acoustic Scenes and Events Workshop (DCASE2020)_, Tokyo, Japan
 
 A longer version of the report with additional details can be also found in [arXiv](https://arxiv.org/pdf/2006.01919.pdf).
 
